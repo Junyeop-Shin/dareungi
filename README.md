@@ -36,7 +36,7 @@ dareungi/
 
 ## 저장소
 
-2026-10-05에 git 저장소를 만들었다. 단계 하나가 끝날 때마다 커밋하고 GitHub 비공개 저장소(`origin/main`)로 푸시한다.
+2026-10-05에 git 저장소를 만들었다. 단계 하나를 끝내고 결과를 검토해 최종본으로 확정한 뒤에 커밋하고 GitHub 비공개 저장소(`origin/main`)로 푸시한다.
 `data/`(예외: `data/processed/daily_master_v2.*`, `data/raw/external/`), `.env`, `.venv/`는 올라가지 않는다.
 
 ## 다른 컴퓨터(집)에서 이어 하기
@@ -77,7 +77,7 @@ claude
 | `/quiz` | 방금 끝낸 절차에 대한 이해 확인 질문(면접 대비) |
 | `/wrapup` | 세션 마무리: STATUS 갱신, 커밋 메시지 제안(커밋은 승인 후) |
 
-작업 순서: **`git pull` → `/next` → (실행·검토·`/checkpoint`·`/decide` 반복) → `/quiz` → `/wrapup`(단계가 끝나면 커밋·푸시)**
+작업 순서: **`git pull` → `/next` → (실행·검토·`/checkpoint`·`/decide` 반복) → `/quiz` → `/wrapup`(단계 결과를 검토해 확정한 뒤 커밋·푸시)**
 
 ## 보안 메모
 
