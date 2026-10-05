@@ -1,0 +1,23 @@
+file_pattern,original_name,standard_name,type,note
+fail_*,자전거번호,bike_no,str,전 기간 SPB-xxxxx
+fail_*,등록일시,reg_dt,datetime,2021-02~12 날짜만 / 2020.11~2021.01·22.01-06·23.1-6 시:분 / 나머지 시:분:초
+fail_*,구분,kind,str,23.1-6 및 2024~2026 파일
+fail_*,고장구분,kind,str,그 외 파일
+rent_2015~2025 (17열),자전거번호,bike_no,str,
+rent_2015~2025 (17열),대여일시,rent_dt,datetime,YYYY-MM-DD HH:MM:SS
+rent_2015~2025 (17열),대여 대여소번호,rent_st,int,5자리(01729) = API RENT_ID
+rent_2015~2025 (17열),대여 대여소명,rent_st_nm,str,
+rent_2015~2025 (17열),대여거치대,rent_hold,str,
+rent_2015~2025 (17열),반납일시,rtn_dt,datetime,
+rent_2015~2025 (17열),반납대여소번호,rtn_st,int,
+rent_2015~2025 (17열),반납대여소명,rtn_st_nm,str,
+rent_2015~2025 (17열),반납거치대,rtn_hold,str,
+rent_2015~2025 (17열),이용시간(분),use_min,num,
+rent_2015~2025 (17열),이용거리(M),use_m,num,미터. 소수점 있음
+rent_2015~2025 (17열),생년,birth_year,str,빈칸 있음
+rent_2015~2025 (17열),성별,sex,str,
+rent_2015~2025 (17열),이용자종류,user_type,str,
+rent_2015~2025 (17열),대여대여소ID,rent_st_id,str,ST-xxx = API RENT_STATION_ID
+rent_2015~2025 (17열),반납대여소ID,rtn_st_id,str,
+rent_2015~2025 (17열),자전거구분,bike_type,str,예: LCD자전거
+rent_2026 (16열),(위 16개와 같음),(같음),,자전거구분 없음 → bike_type = NULL

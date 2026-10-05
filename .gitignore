@@ -1,0 +1,30 @@
+# 인증키·환경
+.env
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store
+
+# 데이터: 원본·중간 산출물은 올리지 않는다(용량·재생성 가능)
+data/*
+!data/processed/
+data/processed/*
+# 단, 분석 입력 최종본(작은 파일)은 올려서 다른 컴퓨터에서도 단계 1B 이후를 할 수 있게 한다
+!data/processed/daily_master_v2.parquet
+!data/processed/daily_master_v2.csv
+# 직접 조사해 만든 외부 자료(다시 받을 수 없는 작은 파일)도 올린다
+!data/raw/
+data/raw/*
+!data/raw/external/
+*.duckdb
+*.duckdb.wal
+
+# 큰 모델 파일
+output/models/*.bin
+
+# 개인 설정
+.claude/settings.local.json
+
+# 처음 받은 문서 묶음(내용은 프로젝트 폴더로 옮겼다. 중복이라 올리지 않는다)
+dareungi_repo/

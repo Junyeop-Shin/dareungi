@@ -1,0 +1,12 @@
+date,fleet_n,net_change,new_n,scrap_n,stations,source,note
+2015-12-31,2000,,,,150,서울시 2018-03-05 https://news.seoul.go.kr/traffic/archives/35750,10월 출범. 출범 당일 1200대라는 기사도 있음
+2016-12-31,5600,3600,,,450,서울시설공단 https://sisul.or.kr/open_content/traffic/bikeseoul.jsp,
+2017-12-31,20000,14400,,,1290,서울시설공단 https://sisul.or.kr/open_content/traffic/bikeseoul.jsp,
+2018-12-31,25000,5000,,,1540,서울시설공단 https://sisul.or.kr/open_content/traffic/bikeseoul.jsp,
+2019-12-31,29500,4500,,,2085,서울시설공단 https://sisul.or.kr/open_content/traffic/bikeseoul.jsp,2019-08 국감자료·2019-10 서울시 자료는 25000대. 2019년 하반기 구매 약 5000대(QR형)는 2020년 상반기에 투입된 것으로 보임 → '보유' 기준 수치
+2020-12-31,37500,8000,8000,,2228,서울시설공단 표 + 서울시 2021-01-21 https://news.seoul.go.kr/traffic/archives/504919,2020-10 기준 29500대. new_n 8000은 11~12월 투입분(일반 6000+새싹 2000). 상반기 QR형 5000대는 2019년 행에 포함된 것으로 보임 → 2020년 실제 투입은 약 13000대
+2021-12-31,40500,3000,,,2600,서울시설공단 https://sisul.or.kr/open_content/traffic/bikeseoul.jsp,
+2022-12-31,43500,3000,6000,2105,2719,서울시설공단 표 + 팩트브리핑 2026-01-19 https://mediahub.seoul.go.kr/archives/2016829,신규-폐기=+3895로 순증과 다름
+2023-12-31,45000,1500,6100,4500,2762,서울시설공단 표 + 팩트브리핑,
+2024-12-31,45000,0,1300,1400,2766,서울시설공단 표 + 팩트브리핑,
+2025-12-31,45000,0,2000,2000,2800,서울시설공단 표 + 팩트브리핑,

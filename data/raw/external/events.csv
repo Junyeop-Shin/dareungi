@@ -1,0 +1,57 @@
+event,start,end,value,unit,source,note
+pass_2h_daily,2016-08-01,,2,시간,서울시 https://news.seoul.go.kr/traffic/archives/30273,"1일권 2시간 기본(2,000원). 일자는 월 단위만 확인"
+pass_2h_season,2017-05-01,,2,시간,서울시 https://news.seoul.go.kr/traffic/archives/33287,정기권 2시간 기본
+service_suspended_system,2017-07-05,2017-07-07,,,mediahub https://mediahub.seoul.go.kr/archives/1094609,시스템 개편. 07-05 12:00 ~ 07-07 12:00 전체 중단(48시간). 대여이력 시간대별 기록과 일치(07-06 대여 9건)
+nonmember_easy_rent,2017-07-07,,,,mediahub https://mediahub.seoul.go.kr/archives/1094609,비회원·외국인 간편 이용
+app_new_report_ui,2018-06-15,,,,mediahub https://mediahub.seoul.go.kr/archives/1162989 / 서울시 https://news.seoul.go.kr/traffic/archives/36268,새 앱(06-15): 본인인증 폐지. '그림에서 고장 부위를 선택해 신고' 문장은 서울시 36268에 있음. 데이터: 신고율이 06-20부터 약 2배(대여 만 건당 14 안팎 → 35 안팎)
+ddareungipo,2019-03-01,,50,곳,서울신문 https://m.go.seoul.co.kr/news/2019/02/28/20190228500167,동네 자전거점포 정비 위탁. 3~11월만 운영(이후 연 약 80곳)
+service_suspended_lingling,2019-09-06,2019-09-08,,,이투데이 2019-09-06 https://www.etoday.co.kr/news/view/1796348 / 이데일리 2019-09-08 https://edaily.co.kr/News/Read?mediaCodeNo=257&newsId=01603926622618152,태풍 링링. 9/6 12:00 운행 중단~9/8 11:00 재개(대여이력 시간대별 기록과 일치). 자전거 회수는 9/5부터
+zeropay_discount,2019-09-26,2019-12-31,50,%,서울시 https://news.seoul.go.kr/traffic/?p=502331,제로페이 결제 시 일일권 50% 할인
+callcenter_24h,2019-11-01,,,,서울시 https://news.seoul.go.kr/traffic/archives/502452,24시간 콜센터(그 전 07~22시) → 야간 신고 경로. 데이터: 11-01 전후 신고율 변화 없음
+external_app_tmoney,2020-01-01,,,,서울시 2025-04-17 https://news.seoul.go.kr/traffic/?p=513995,티머니(티머니GO)와 최초 연계. 원문은 '2020년'만 있음 → 월·일은 임시값
+qr_pilot,2020-03-01,,500,대,서울시 2020-02-28 https://news.seoul.go.kr/traffic/archives/502943,QR형 시범 500대(녹색교통지역). 상반기 5천대 계획
+covid_distancing,2020-03-22,2022-04-17,,,fnnews https://www.fnnews.com/news/202003221931326579 / mediahub https://mediahub.seoul.go.kr/archives/2004303,거리두기 전체 기간. 단계별 행은 covid_* 참고. 해제 후에도 이용 증가
+covid_distancing_high,2020-03-22,2020-04-05,,,fnnews https://www.fnnews.com/news/202003221931326579,고강도 사회적 거리두기
+service_suspended_bavi,2020-08-26,2020-08-27,,,서울시 https://news.seoul.go.kr/traffic/archives/503810,"태풍 바비. 8/26 18:00 중단(서울시 공지, 이용권 판매는 15:00 중지). 재개 8/27 14시대(공지 못 찾음, 대여이력으로 확인)"
+qr_conversion,2020-10-01,2022-02-28,,,이투데이 2022-01-19 https://www.etoday.co.kr/news/view/2097968 / 머니투데이 2022-03-03 https://www.mt.co.kr/society/2022/03/03/2022030314274099503,기존 LCD 단말기를 QR로 교체(자전거는 유지). 시작일은 이투데이 기사의 '2020년 10월부터 전면 교체' 기준. 단 대여이력에서는 옛 번호가 2020-04부터 줄어 2020-10에 대여의 7%. 2022년 2월 전수 완료. 개조 때 번호를 새로 붙인 것으로 보임(공식 확인 못 함)
+qr_new_bikes_2020h2,2020-11-05,2020-12-31,8000,대,서울시 2020-11-06 https://news.seoul.go.kr/traffic/?p=504275,"QR형 신규 8천대(일반 6천+새싹 2천) 연말까지 투입. 새싹따릉이는 11-30 500대로 시작해 2021-01까지 2,000대"
+age_limit_13,2020-11-30,,13,세,서울시 https://news.seoul.go.kr/traffic/archives/504494,"이용 연령 만 15세 → 만 13세(새싹따릉이 도입과 동시, 원문 확인)"
+covid_distancing_2_5,2020-12-08,2021-02-14,,,mediahub https://mediahub.seoul.go.kr/archives/2004303,수도권 2.5단계(기간 원문 재확인)
+field_maintenance,2021-02-01,,,,아시아경제 2021-04-29 https://www.asiae.co.kr/article/2021042917162325745,배송직원 현장 단순정비(2월~) + 간이정비소 3곳(3월~)
+app_renewal_phase1,2021-02-26,,,,내손안에서울 2021-03-29 https://mediahub.seoul.go.kr/archives/2001054,앱 1차 리뉴얼(완전 리뉴얼은 2021-03-15)
+app_renewal,2021-03-15,,,,서울시 2021-03-11 https://news.seoul.go.kr/traffic/archives/505259 / 내손안에서울 2021-03-29 https://mediahub.seoul.go.kr/archives/2001054,앱 전면 리뉴얼. 고장 신고를 '고객센터' 메뉴로 통합. iOS판은 3월 말 예정(실제 출시일 미확인)
+chain_guard,2021-04-01,,300,대(누적),아시아경제 2021-03-25 https://view.asiae.co.kr/article/2021032508205107056,시범(상반기 300대 계획)
+report_jump_2021,2021-04-05,,,,데이터에서 발견,"신고율 약 2배 점프(같은 자전거 묶음 안에서 04-05~08 사이). 외부 원인 미확인. 앱 리뉴얼(03-15, iOS 3월 말 예정) 직후"
+kickboard_law,2021-05-13,,,,노컷뉴스 https://www.nocutnews.co.kr/news/5551885,개정 도로교통법: 킥보드 면허·헬멧 의무
+bike_lane_cheonggye,2021-05-31,,5.94,km,서울시 https://news.seoul.go.kr/traffic/archives/505817,청계천 자전거 전용도로(뚝섬까지)
+covid_distancing_4,2021-07-12,2021-10-31,,,mediahub https://mediahub.seoul.go.kr/archives/2004303,수도권 4단계
+kickboard_towing,2021-07-15,,,,mediahub https://mediahub.seoul.go.kr/archives/2002228,"킥보드 견인 시작(9월 15개 구, 10월 23개 구)"
+covid_lifted,2022-04-18,,,,뉴시스 https://www.newsis.com/view/NISX20220621_0001914639,"거리두기 해제. 해제 후 이용 +51%, 10대 +48.5%"
+service_suspended_flood,2022-08-08,2022-08-09,,,뉴데일리 https://www.newdaily.co.kr/site/data/html/2022/08/09/2022080900165.amp.html,"80년 만의 폭우. 대여 중단, 저지대 대여소 폐쇄·회수(기사에 시각 없음). 대여이력: 08-08 12시대부터 급감, 08-09 하루 482건, 08-10 07시대 재개"
+station_closed_fireworks,2022-10-08,2022-10-08,,,세계일보 https://www.segye.com/view/20221007510906,여의도 일대 대여·반납 중지(대여소 단위)
+part_recycling_pilot,2023-03-01,2023-11-30,4,종,서울시 2024-03-06 https://news.seoul.go.kr/traffic/archives/511952,폐자전거 부품 재활용 시범(튜브·시트포스트·앞바퀴·뒷바퀴)
+rebalance_mileage,2023-07-17,,110,곳,mediahub https://mediahub.seoul.go.kr/archives/2008474,재배치 마일리지 시범(과잉·부족 대여소 각 약 110곳)
+bus_fare_up,2023-08-12,,1500,원,트위그 https://www.twig24.com/news/local_seoul/2023/08/11/20230811010002,"시내버스 1,200 → 1,500원"
+service_outage_network,2023-09-07,2023-09-07,,,mediahub https://mediahub.seoul.go.kr/archives/2009031,"09-07 오전 7:50 이후 앱 접속 장애(DB 최적화 작업 뒤). 대여이력: 08~10시대 대여 거의 없음, 11시대 재개. 미반납 강제 반납 → 이용시간 이상치 가능"
+report_dip_2023,2023-09-07,2023-10-10,,,데이터에서 발견,접속 장애(09-07) 직후부터 신고율 약 40% 저하(모든 부품). 10-11부터 회복. 대여는 정상. 원인 공지 못 찾음
+subway_fare_up,2023-10-07,,1400,원,뉴시스 https://www.newsis.com/view/NISX20230927_0002466887,"지하철 1,250 → 1,400원"
+climate_card,2024-01-27,,,,mediahub https://mediahub.seoul.go.kr/archives/2009830,"기후동행카드 시범(따릉이 포함 월 65,000원 무제한). 2026-09-01 기후동행패스로 바뀌며 따릉이 연계 미정"
+external_app_toss,2024-02-06,,,,토스 https://toss.im/tossfeed/article/bike-seoul,"토스 앱 대여(1/31 일부, 2/6 전체). 대여이력의 이용자종류는 내국인·비회원·외국인뿐이라 외부 앱 대여를 구분할 수 없음(2023-12~2026-06 확인). 고장 신고 가능 여부 미확인"
+saddle_recycling,2024-03-01,,,,서울시 2024-03-06 https://news.seoul.go.kr/traffic/archives/511952,폐자전거 부품 재활용 7종으로 확대(브레이크 레버·안장·앞브레이크 추가). 원문 '올해 3월부터 본격적으로'. 4종 시범은 2023-03~11
+free_ride_bike_day,2024-04-20,2024-04-22,,,mediahub https://mediahub.seoul.go.kr/archives/2010920,자전거의 날 무료 이용(퀴즈 참여 시 무료이용권). 데이터: 대여 증가 뚜렷하지 않음(04-20은 비)
+service_outage_ddos,2024-06-28,2024-06-30,80,분,뉴시스 https://mobile.newsis.com/view/NISX20260206_0003505448,"06-28~30 DDoS 공격, 앱 약 80분 다운(정확한 시각은 기사에 없음). 대여이력: 06-28 11시대 급감(1시간), 06-29 19시 ~ 06-30 오전 급감(비도 옴)"
+climate_card_main,2024-07-01,,,,mediahub https://mediahub.seoul.go.kr/archives/2011569,"기후동행카드 본사업(청년 58,000원, 단기권)"
+station_closed_fireworks,2024-10-05,2024-10-06,21,곳,mediahub https://mediahub.seoul.go.kr/archives/2012353,대여소 21곳 중지
+chain_guard,2025-02-28,,11000,대(누적),경향신문 2025-02-28 https://www.khan.co.kr/article/202502281046001,전체 4만5천 대 중 약 1.1만 대
+report_drop_2025,2025-03-01,,,,데이터에서 발견,신고율 약 20% 감소(체인 0.68배·안장 0.72배). 외부 원인 미확인. 테스트 구간
+station_closed_gwanghwamun,2025-03-13,2025-04-30,,,mediahub https://mediahub.seoul.go.kr/archives/2013945,집회로 광화문 일대 대여소 수 주간 폐쇄. end는 추정
+station_closed_verdict,2025-04-03,2025-04-05,71,곳,더팩트 https://news.tf.co.kr/read/life/2193538.htm,탄핵 선고 전후 71곳 중지
+external_app_socar,2025-04-16,,,,서울시 2025-04-17 https://news.seoul.go.kr/traffic/?p=513995,"쏘카 앱에서 대여·이용권 구매(원문 확인). 같은 자료: 티머니와는 2020년 최초 연계, 토스는 2024년"
+family_pass,2025-04-23,,,,경향신문 2025-04-21 https://www.khan.co.kr/article/202504211115001,가족권 도입
+subway_fare_up,2025-06-28,,1550,원,한국경제 https://www.hankyung.com/article/2025062320567,"지하철 1,400 → 1,550원"
+station_closed_fireworks,2025-09-26,2025-09-28,,,mediahub https://mediahub.seoul.go.kr/archives/2015721,여의도·마포·용산·동작 일대 중지
+top_tube_frame,,2025-11-12,32000,대(누적),서울시 2025-11-12 https://news.seoul.go.kr/traffic/archives/515711,L자형→탑튜브형 적용 완료. 연도별 시점 미확인
+three_hour_pass,2025-11-13,,,,서울시 2025-11-12 https://news.seoul.go.kr/traffic/archives/515711,3시간권 도입. 원문 '25.11.13일(목)부터' 확인
+chain_guard,2025-12-31,,16000,대(누적),서울시 2025-11-12 https://news.seoul.go.kr/traffic/archives/515711,계획치. 2030년까지 전체 적용
+bus_strike,2026-01-13,2026-01-14,,,한국경제 https://www.hankyung.com/article/202601153645Y,서울 시내버스 파업
+station_closed_fireworks,2026-09-04,2026-09-06,,,2차(조사 요약),분석 기간 밖. 원문 재확인
