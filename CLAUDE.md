@@ -90,7 +90,7 @@ from prep import to_utf8, std_name, read_any, data_files, make_utf8_folder
 - **건당 이용시간이 해마다 다르다**(2020년 29분 → 2023년 이후 20.5분). 대여건수 기준 신고율은 이용시간 기준과 비교해서 본다.
 - **주 단위 신고 건수는 대부분 이용량이 정한다**(변동의 70~85%). 신고율 쪽에서 크게 움직이는 것은 수준 변화, 타이어 계절성(연중 2.4배), 한파(−4℃ 이하 1.33배)뿐이다. 요일 효과(월 1.10, 토 0.87)는 기간이 달라도 같다. 더위·전날 비는 효과가 없거나 작다. 변수 목록은 `docs/variables_v1.md`. 학습에서 `no_service`, `report_anomaly`인 날은 뺀다.
 - **노출은 대여건수(`rentals`)다**(체크포인트 C, 2026-10-05. 단계 0의 "노출 = 이동거리"를 바꿨다): 이용시간·이동거리보다 AIC 약 195 낮고 검증 오차도 작다. 한파 변수는 `cold_wave`와 `winter_anom`을 둘 다 넣는다. 전날 비는 전체로는 효과가 없고 부품별로 갈린다. 부품별로 모형을 따로 맞춘다. 음이항 회귀 함수는 `py/nbreg.py`.
-- **예측(1C)**: 과제는 부품별 앞으로 7일 합계. 코드는 `py/fc.py`(과제·나이브·시나리오·채점), `py/fc_models.py`(음이항·LightGBM·ARIMAX), `py/fc_dl.py`(GRU). `make_base()`는 기본으로 테스트 구간 원점을 만들지 않는다. **테스트 구간 예측·채점은 사람이 승인한 뒤 한 번만.** 맥에서는 lightgbm을 torch보다 먼저 import하고 torch 스레드를 1개로 둔다(안 그러면 프로세스가 죽거나 멈춘다).
+- **예측(1C)**: 과제는 부품별 앞으로 7일 합계. 코드는 `py/fc.py`(과제·나이브·시나리오·채점), `py/fc_models.py`(음이항·LightGBM·ARIMAX), `py/fc_dl.py`(GRU). `py/fc_expo.py`(대여량 모형: 예보 오차가 섞인 날씨로 학습한 LightGBM), `py/weather_forecast.py`(과거 예보 수집·오차 측정). 예측 모형은 다섯 부품 모두 음이항(`output/models/selection.csv`). `make_base()`는 기본으로 테스트 구간 원점을 만들지 않는다. **테스트 구간 예측·채점은 사람이 승인한 뒤 한 번만.** 맥에서는 lightgbm을 torch보다 먼저 import하고 torch 스레드를 1개로 둔다(안 그러면 프로세스가 죽거나 멈춘다).
 - 외부 요인(앱 개편, 민간 앱 대여, 체인가드, 코로나 등)의 날짜·출처는 `data/raw/external/events.csv`, 검토는 `docs/reference/07~10`.
 - 결정 이력: `docs/decision_log.md`
 

@@ -55,7 +55,7 @@ def load_master():
     추가하는 열
       bad        : 학습·수준 계산에서 빼는 날(운영 중단일, 신고 누락 기간)
       snow_any, rain_any : 눈(1cm 이상)·비(1mm 이상) 온 날
-      expo_lvl   : 노출의 최근 수준 = 34일 전 ~ 7일 전(28일) 하루 평균 대여건수.
+      expo_lvl   : 노출의 최근 수준 = 34일 전 ~ 7일 전(28일) 하루 평균 대여건수. expo_lvl7은 13일 전 ~ 7일 전(7일) 평균.
                    '7일 전까지'만 쓰는 이유: 원점 t에서 t+6일을 예측할 때도 t−1일까지의 정보만 쓰게 하려고(미래 정보 차단)
       lvl_<부품> : 그 부품 신고율의 최근 수준 = 같은 28일의 신고 합계 ÷ 대여 합계(bad인 날은 빼고 계산)
       개입·환경 변수(1C에서 넣은 것·뺀 것을 비교): covid, qr_done, kick_law, kick_tow, recycle1, recycle2, bus_fare, subway_fare, climate_card, toss
@@ -68,8 +68,10 @@ def load_master():
     m[bool_cols] = m[bool_cols].astype(int)
 
     ok = m.bad == 0
-    m["expo_lvl"] = m.rentals.where(ok).rolling(28, min_periods=14).mean().shift(7)
-    den = m.rentals.where(ok).rolling(28, min_periods=14).sum().shift(7)
+    # 대여량의 수준은 운영 중단일만 빼고 계산한다. 신고 누락 기간(2023-09-07 ~ 10-10)은 신고만 덜 잡힌 것이고 대여는 정상이었다
+    # (처음에는 bad 전체를 빼서 그 기간의 대여 수준이 비어 버리는 실수가 있었다. 2026-10-05 수정)
+    m["expo_lvl"] = m.rentals.where(m.no_service == 0).rolling(28, min_periods=14).mean().shift(7)
+    m["expo_lvl7"] = m.rentals.where(m.no_service == 0).rolling(7, min_periods=4).mean().shift(7)   # 더 짧은 수준: 13일 전 ~ 7일 전(1주) 평균
     for p in PARTS:
         # 2021-04-08 이전은 신고가 잡히는 정도가 달랐던 기간이라 수준 계산에 넣지 않는다
         num = m[p].where(ok & (m.date >= "2021-04-08"))
