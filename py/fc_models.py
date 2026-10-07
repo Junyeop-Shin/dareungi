@@ -29,10 +29,11 @@ GLM_WX = " + cold_wave + winter_anom + tavg + snow_any + np.log1p(rain_mm) + np.
 GLM_EXTRA = " + hot + freeze_thaw"                                                                    # 넣은 것·뺀 것을 비교할 변수
 
 
-def fit_glm(m, part, weather=True, extra=False):
+def fit_glm(m, part, weather=True, extra=False, end=TRAIN_DAYS[1]):
     """부품 하나의 신고율 모형을 학습 구간의 날들로 맞춘다. 대여건수는 노출(offset).
-    weather=False면 날씨 변수를 뺀다(시나리오 D). extra=True면 더위·얼었다 녹은 날을 더 넣는다."""
-    tr = m[m.date.between(*TRAIN_DAYS) & (m.bad == 0)].assign(lvl=lambda t: t["lvl_" + part]).dropna(subset=["lvl"])
+    weather=False면 날씨 변수를 뺀다(시나리오 D). extra=True면 더위·얼었다 녹은 날을 더 넣는다.
+    end: 학습에 쓰는 마지막 날. 테스트 때는 검증 구간까지(2024-12-31) 넣어 다시 맞춘다"""
+    tr = m[m.date.between(TRAIN_DAYS[0], end) & (m.bad == 0)].assign(lvl=lambda t: t["lvl_" + part]).dropna(subset=["lvl"])
     rhs = GLM_CAL + (GLM_WX if weather else "") + (GLM_EXTRA if (weather and extra) else "")
     return fit_nb_fc(f"{part} ~ {rhs}", tr, offset=np.log(tr.rentals))
 

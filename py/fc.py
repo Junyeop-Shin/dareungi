@@ -242,9 +242,10 @@ EXPO_CAL = "np.log(expo_lvl) + C(dow) + is_holiday + after_off + bridge + fs1 + 
 EXPO_WX = " + tavg + I(tavg**2) + cold_wave + rain_any + np.log1p(rain_mm) + snow_any"
 
 
-def fit_expo(m, weather=True):
-    """대여량 예측 모형을 학습 구간의 날들로 맞춘다(운영 중단일은 빼고). weather=False면 날씨 없이(시나리오 D용)"""
-    tr = m[m.date.between(*TRAIN_DAYS) & (m.no_service == 0)].dropna(subset=["expo_lvl"])
+def fit_expo(m, weather=True, end=TRAIN_DAYS[1]):
+    """대여량 예측 모형을 학습 구간의 날들로 맞춘다(운영 중단일은 빼고). weather=False면 날씨 없이(시나리오 D용).
+    end: 학습에 쓰는 마지막 날. 테스트 때는 검증 구간까지(2024-12-31) 넣어 다시 맞춘다"""
+    tr = m[m.date.between(TRAIN_DAYS[0], end) & (m.no_service == 0)].dropna(subset=["expo_lvl"])
     return fit_nb_fc("rentals ~ " + EXPO_CAL + (EXPO_WX if weather else ""), tr)[0]
 
 

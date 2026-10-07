@@ -103,10 +103,13 @@ from prep import to_utf8, std_name, read_any, data_files, make_utf8_folder
 | `docs/WORKFLOW_사람-AI_역할분담.md` | 단계별 AI 작업과 사람 결정 지점 |
 | `docs/runbook/00~09` | 단계별 실행 절차(코드 포함). `[결정]` 표시 = 사람이 정함 |
 | `docs/decision_log.md` | 결정과 근거 수치 |
+| `py/fc_posthoc.py` | 부록 B 사후 분석(최근 4주 신고율 계수 1 고정). 테스트 뒤 수정이므로 참고치. `selection.csv`는 바꾸지 않는다 |
+| `docs/report_stage1.md` | 단계 1 보고서 초안(2026-10-07). 숫자는 `output/tables/` 인용, 문장은 사람이 다듬는다 |
 | `docs/notes/01~03` | 단계별 메모(전처리·EDA·모델 설계): 무엇을 어떻게 왜 처리했는지. **처리나 결정이 생기면 갱신한다** |
 | `docs/phase0_result.md`, `docs/schema_map.csv` | 단계 0 결과, 열 이름 대응표 |
 | `docs/reference/01~06` | 1차 분석 검토, 변수 실증, 설계 쟁점, 타당성 검토(출처 포함) |
 | `docs/reference/07~10` | 신고율 변화 원인 조사, 외부환경 타임라인, 조사자료 검증, 외부요인 정리 |
+| `docs/reference/04b_레짐_원인_분석.md` | 레짐 원인 사후 분석 계획(사람 작성, 2026-10-07 검토 반영). 예측 모형 선택에는 쓰지 않는다 |
 | `py/prep.py`, `py/seoul_api.py` | 공용 함수(인코딩·파일 읽기, 서울 열린데이터 API) |
 | `py/use_daily.py`, `py/rent_history_daily.py`, `py/bike_month.py`, `py/failure_gaps.py` | 대용량 원본을 날짜별·자전거별 합계로 줄이는 스크립트, 고장신고 빠진 날 API 수집. 결과는 `data/interim/`, `data/raw/failure_api/` |
 | `notebooks/` | `00_사전검증`, `1A_Build_master`(마스터 생성·검증), `1A_regime`(레짐 점검), `1A_eda`(EDA, 시작 전) |
