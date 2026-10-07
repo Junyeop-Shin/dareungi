@@ -113,7 +113,10 @@ from prep import to_utf8, std_name, read_any, data_files, make_utf8_folder
 | `py/rc_bike_level.py` | 04b R4b·R5·R6(헛대여 뒤 신고 확률, 신고 후 공백, 신고 없는 중단). 적재 중에는 메모리 DB로 Parquet만 읽는다 |
 | `py/day_signal.py`, `py/rc_changepoint.py`, `py/rc_duplicates.py`, `py/rc_sham.py` | 레짐 원인 사후 분석(04b R1·R2·R4a). 날짜별 헛대여 수(`data/processed/day_signal.parquet`), 변화점, 신고 분해, 헛대여율 대 신고율. 결과는 `docs/notes/04_레짐원인_메모.md` |
 | `docs/report_stage1.md` | 단계 1 보고서 초안(2026-10-07). 숫자는 `output/tables/` 인용, 문장은 사람이 다듬는다 |
-| `docs/notes/01~05` | 단계별 메모(전처리·EDA·모델 설계·레짐 원인·개체 패널): 무엇을 어떻게 왜 처리했는지. **처리나 결정이 생기면 갱신한다** |
+| `py/risk_alert.py`, `py/risk_interpret.py`, `py/risk_freeze.py` | 2B-5 헛대여 경보 검증, 2B-4 해석 모형(음이항 IRR·Cox), 2B-6 고정(`risk_spec.json`)과 테스트(`--test`, **사람 승인 뒤 한 번만**) |
+| `py/risk_lgb.py` | 단계 2B-3 LightGBM 포아송 + km offset(전체 + 부품별). 모형 `output/models/risk_*.txt`, 검증 설정 `risk_spec_valid.json` |
+| `py/risk_eval.py` | 단계 2B 평가 함수(precision@K, lift)·베이스라인·분할(학습 2024-01 ~ 2025-06 / 검증 2025-07 ~ 12 / 테스트 2026 ~). `load_panel()`은 기본으로 테스트 행을 돌려주지 않는다 |
+| `docs/notes/01~06` | 단계별 메모(전처리·EDA·모델 설계·레짐 원인·개체 패널·위험 모형): 무엇을 어떻게 왜 처리했는지. **처리나 결정이 생기면 갱신한다** |
 | `docs/phase0_result.md`, `docs/schema_map.csv` | 단계 0 결과, 열 이름 대응표 |
 | `docs/reference/01~06` | 1차 분석 검토, 변수 실증, 설계 쟁점, 타당성 검토(출처 포함) |
 | `docs/reference/07~10` | 신고율 변화 원인 조사, 외부환경 타임라인, 조사자료 검증, 외부요인 정리 |

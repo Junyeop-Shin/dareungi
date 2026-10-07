@@ -1,0 +1,123 @@
+{
+  "version": "2026-10-07",
+  "fixed_on": "2026-10-07",
+  "label": "다음 주(월요일 시작) 이용자 고장신고 건수(48시간 중복 병합). 실제 고장보다 적게 잡힌다(2025년부터 신고 성향 약 30% 하락)",
+  "split": {
+    "train": "2024-01-01 ~ 2025-06-30",
+    "valid": "2025-07-01 ~ 2025-12-31",
+    "test": "2026-01-01 ~ 2026-06-30"
+  },
+  "features": [
+    "km",
+    "n_trips",
+    "minutes",
+    "speed_med",
+    "speed_sd",
+    "sh_commute",
+    "sh_leisure",
+    "sh_round",
+    "sh_rain",
+    "sh_wet",
+    "sh_hot",
+    "sh_cold",
+    "climb_per_km",
+    "descent_per_km",
+    "reloc_per_trip",
+    "sh_cl0",
+    "sh_cl1",
+    "sh_cl2",
+    "sh_cl3",
+    "sh_cl4",
+    "km_since_rep",
+    "trips_since_rep",
+    "climb_since_rep",
+    "days_since_rep",
+    "rain_days_since_rep",
+    "freeze_days_since_rep",
+    "age_days",
+    "age_known",
+    "km_total",
+    "rep_13w",
+    "km_4w",
+    "sham_2w",
+    "left_censored",
+    "last_repaired",
+    "bike_type",
+    "month"
+  ],
+  "params": {
+    "objective": "poisson",
+    "learning_rate": 0.05,
+    "feature_fraction": 0.8,
+    "bagging_fraction": 0.8,
+    "bagging_freq": 1,
+    "lambda_l2": 1.0,
+    "seed": 42,
+    "verbose": -1,
+    "num_threads": 6,
+    "num_leaves": 63,
+    "min_data_in_leaf": 2000
+  },
+  "offset": "log(다음 주 km). 예측은 raw_score(1km당 신고율의 로그)",
+  "scores": {
+    "risk_rate": "exp(raw) × 1000 = 1,000km당 기대 신고(점검 우선순위 기본값)",
+    "risk_count": "exp(raw) × 최근 4주 평균 km = 기대 신고 수(수거 관점)"
+  },
+  "models": {
+    "all": {
+      "file": "risk_all_final.txt",
+      "best_iteration": 739,
+      "calibration_scale": 0.8202860539519008
+    },
+    "tire": {
+      "file": "risk_tire_final.txt",
+      "best_iteration": 662,
+      "calibration_scale": 0.7844240445475352
+    },
+    "chain": {
+      "file": "risk_chain_final.txt",
+      "best_iteration": 827,
+      "calibration_scale": 0.7745134468946689
+    },
+    "saddle": {
+      "file": "risk_saddle_final.txt",
+      "best_iteration": 669,
+      "calibration_scale": 0.9045243471723786
+    },
+    "pedal": {
+      "file": "risk_pedal_final.txt",
+      "best_iteration": 663,
+      "calibration_scale": 0.6212701811303847
+    }
+  },
+  "primary_metric": "precision@1000 (보조 500·2000, lift@5%)",
+  "best_baseline_valid": {
+    "name": "B3 최근 13주 신고",
+    "prec@1000": 0.082,
+    "lift@5%": 1.45
+  },
+  "grade_by_weekly_percentile": {
+    "점검 권장": 0.95,
+    "주의": 0.8,
+    "보통": 0.5
+  },
+  "rank_rule": "최근 4주 주행이 0인 자전거는 위험률 순위에서 제외(점검해도 신고가 날 수 없음). 기대 신고 수 순위는 전체",
+  "alert_rule": "같은 대여소 반납 2 ~ 3분 헛대여가 연속 2회 → 경보(24시간 안 중복 제외). 검증 적중 46%(7일), 기준선의 5.2배",
+  "reason_phrases": {
+    "km_since_rep": "마지막 신고 이후 주행거리가 깁니다",
+    "trips_since_rep": "마지막 신고 이후 대여가 많았습니다",
+    "climb_since_rep": "오르막 주행이 많았습니다",
+    "sh_wet": "비 온 뒤 젖은 노면 주행이 많았습니다",
+    "sh_rain": "비 오는 중 주행이 많았습니다",
+    "sham_2w": "최근 빌리자마자 반납된 기록이 있습니다",
+    "rep_13w": "최근 3개월 안에 신고된 적이 있습니다",
+    "age_days": "도입된 지 오래된 자전거입니다",
+    "km_total": "누적 주행거리가 깁니다",
+    "reloc_per_trip": "재배치 이동이 잦았습니다",
+    "freeze_days_since_rep": "얼었다 녹은 날이 많았습니다",
+    "rain_days_since_rep": "비 온 날이 많았습니다",
+    "speed_med": "주행 속도 패턴이 평소와 다릅니다",
+    "last_repaired": "직전 신고 뒤 수거·정비 기록이 없습니다"
+  },
+  "label_note": "이용자 고장신고 기준. 실제 고장보다 적게 잡힌다. 안전을 보증하지 않는다"
+}

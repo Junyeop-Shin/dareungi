@@ -1,0 +1,69 @@
+{
+  "features": [
+    "km",
+    "n_trips",
+    "minutes",
+    "speed_med",
+    "speed_sd",
+    "sh_commute",
+    "sh_leisure",
+    "sh_round",
+    "sh_rain",
+    "sh_wet",
+    "sh_hot",
+    "sh_cold",
+    "climb_per_km",
+    "descent_per_km",
+    "reloc_per_trip",
+    "sh_cl0",
+    "sh_cl1",
+    "sh_cl2",
+    "sh_cl3",
+    "sh_cl4",
+    "km_since_rep",
+    "trips_since_rep",
+    "climb_since_rep",
+    "days_since_rep",
+    "rain_days_since_rep",
+    "freeze_days_since_rep",
+    "age_days",
+    "age_known",
+    "km_total",
+    "rep_13w",
+    "km_4w",
+    "sham_2w",
+    "left_censored",
+    "last_repaired",
+    "bike_type",
+    "month"
+  ],
+  "num_leaves": 63,
+  "min_data_in_leaf": 2000,
+  "models": {
+    "all": {
+      "file": "risk_all.txt",
+      "best_iteration": 739,
+      "calibration_scale": 0.8202860539519008
+    },
+    "tire": {
+      "file": "risk_tire.txt",
+      "best_iteration": 662,
+      "calibration_scale": 0.7844240445475352
+    },
+    "chain": {
+      "file": "risk_chain.txt",
+      "best_iteration": 827,
+      "calibration_scale": 0.7745134468946689
+    },
+    "saddle": {
+      "file": "risk_saddle.txt",
+      "best_iteration": 669,
+      "calibration_scale": 0.9045243471723786
+    },
+    "pedal": {
+      "file": "risk_pedal.txt",
+      "best_iteration": 663,
+      "calibration_scale": 0.6212701811303847
+    }
+  }
+}

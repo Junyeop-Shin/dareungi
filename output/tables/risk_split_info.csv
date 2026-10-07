@@ -1,0 +1,3 @@
+split,rows,bikes,weeks,y_pos,y_pos_per_week
+train,3351477,45619,79,0.0523,2219.0633
+valid,1119920,44705,26,0.0413,1778.5385
