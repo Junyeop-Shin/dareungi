@@ -9,6 +9,8 @@
     E0 음이항(처음 쓰던 것)   E2 음이항 + 기온 편차·계절 상호작용   E5 LightGBM
   예보 오차가 섞인 날씨로 학습 ("N" = noisy)
     N2 음이항 E2              N5 LightGBM                           N7 N2와 N5의 기하평균
+  기상청 과거 예보로 학습 ("K" = KMA, 시나리오 B)
+    K2 음이항 E2              K5 LightGBM
 
 [예보 오차가 섞인 날씨로 학습한다는 것]
 모형을 쓸 때는 미래 날씨를 '예보'로만 안다. 그런데 학습을 '실제 날씨'로 하면 모형은 날씨를 100% 믿도록 배운다.
@@ -94,7 +96,7 @@ def _wk_err(f, hat):
 def compare_expo(m):
     """대여량 모형 후보를 비교한다.
     열: 학습 구간 뒤쪽 원점(2023-03-01 ~ 12-25, 그 앞까지만 학습)과 검증 원점(2024, 2023년까지 학습)에서의 주간 오차율.
-        날씨 A = 예측할 때 실제 날씨를 넣음, C = 예보 오차가 섞인 날씨를 넣음(현실에 가까운 조건)"""
+        날씨 A = 예측할 때 실제 날씨를 넣음, B = 기상청 예보를 넣음(실제 운영 조건), C = 예보 오차가 섞인 날씨를 넣음"""
     spans = {"학습 뒤쪽": (TRAIN_DAYS[0], "2023-02-28", "2023-03-01", "2023-12-25"),
              "검증": (TRAIN_DAYS[0], TRAIN_DAYS[1], "2024-01-01", "2024-12-25")}
     glm = lambda rhs: (lambda rows: (lambda r: (lambda f: r.predict(_with_anom(f))))(fit_nb_fc("rentals ~ " + rhs, rows)[0]))
@@ -104,14 +106,16 @@ def compare_expo(m):
         g1, g2 = glm(EXPO_CAL + E2_WX)(rows), lgbm(rows)
         return lambda f: np.sqrt(np.asarray(g1(f)) * g2(f))
     cands = [("E0 음이항(처음 모형)", "A", glm(EXPO_CAL + EXPO_WX)), ("E2 음이항 + 기온 편차·계절", "A", glm(EXPO_CAL + E2_WX)), ("E5 LightGBM", "A", lgbm),
-             ("N2 음이항 E2", "C", glm(EXPO_CAL + E2_WX)), ("N5 LightGBM", "C", lgbm), ("N7 N2와 N5의 기하평균", "C", ens)]
+             ("N2 음이항 E2", "C", glm(EXPO_CAL + E2_WX)), ("N5 LightGBM", "C", lgbm), ("N7 N2와 N5의 기하평균", "C", ens),
+             ("K2 음이항 E2", "B", glm(EXPO_CAL + E2_WX)), ("K5 LightGBM", "B", lgbm)]
+    label = {"A": "실측", "B": "기상청 예보", "C": "예보 오차 섞음"}
     out = []
     for name, train_scn, maker in cands:
-        row = {"모형": name, "학습에 쓴 날씨": "실측" if train_scn == "A" else "예보 오차 섞음"}
+        row = {"모형": name, "학습에 쓴 날씨": label[train_scn]}
         for span, (a, b, o1, o2) in spans.items():
             pred = maker(expo_rows(m, a, b, train_scn))
             oi = np.where(m.date.between(o1, o2))[0]
-            for scn in "AC":
+            for scn in "ABC":
                 f = future_frame(m, oi, scn)
                 row[f"{span}, 날씨 {scn}"] = _wk_err(f, pred(f))
         out.append(row)

@@ -37,6 +37,15 @@ def fit_glm(m, part, weather=True, extra=False):
     return fit_nb_fc(f"{part} ~ {rhs}", tr, offset=np.log(tr.rentals))
 
 
+def fit_glm_rows(rows, part, weather=True):
+    """신고율 모형을 '미래 7일 표' 형식의 학습 행(원점 × 며칠 뒤, 날씨는 예보)으로 맞춘다.
+    실제 날씨로 학습한 fit_glm과 달리, 예보로 학습하면 모형이 '예보를 어느 정도만 믿는' 법을 배운다(대여량 모형에서 확인한 효과).
+    rows: fc.future_frame(m, 학습 원점, "B")의 결과. 신고 건수와 대여건수(offset)는 실제 값"""
+    tr = rows[rows.bad == 0].assign(lvl=lambda t: t["lvl_" + part]).dropna(subset=["lvl"])
+    rhs = GLM_CAL + (GLM_WX if weather else "")
+    return fit_nb_fc(f"{part} ~ {rhs}", tr, offset=np.log(tr.rentals))
+
+
 def predict_glm(fit, f, part, expo_hat, nsim=1000, seed=42):
     """맞춘 모형으로 '미래 7일 표'(f)의 각 날 기대 건수를 구해 원점별로 더한다.
     expo_hat: 각 행의 대여량 예측값. 예측구간은 음이항 분포에서 nsim번 뽑아 7일 합계의 10%·90% 지점으로 만든다

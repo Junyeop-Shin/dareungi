@@ -11,7 +11,8 @@
 
 [날씨 시나리오] 미래 7일의 날씨를 얼마나 아는가
   A 실측     : 실제 관측값을 그대로 쓴다. 완벽한 예보가 있을 때의 상한선(1차 분석이 쓴 방식)
-  C 오차 주입: 실측에 예보 오차를 흉내 낸 잡음을 더한다. 현실에 가까운 추정. 오차 크기는 가정이다
+  B 기상청 예보: 그 원점에서 실제로 볼 수 있던 기상청 예보(단기예보 0 ~ 2일, 중기예보 3 ~ 6일). 실제 운영과 같은 조건(py/kma_forecast.py)
+  C 오차 주입: 실측에 예보 오차를 흉내 낸 잡음을 더한다. B를 구하기 전에 쓰던 가정. 오차 크기는 B와 비슷하게 맞았다
   D 날씨 없음: 날씨 변수를 아예 뺀 모형으로 예측한다. 날씨 정보가 전혀 없을 때
                (평년값을 대신 넣는 방법은 쓰지 않는다. "매일 평균 강수량만큼 비가 온다"가 되어 대여량을 30% 가까이 낮게 예측했다)
 
@@ -154,12 +155,23 @@ def _derive(f):
     return f
 
 
+_KMA = None
+
+
+def _kma_forecast():
+    """기상청 과거 예보 표를 한 번만 읽어 둔다"""
+    global _KMA
+    if _KMA is None:
+        _KMA = pd.read_parquet(ROOT / "data/interim/weather_forecast/kma_by_origin.parquet")
+    return _KMA
+
+
 def future_frame(m, origins_i, scn):
     """원점마다 '앞으로 7일'의 행을 만든다(원점 수 × 7행). 날씨는 시나리오에 따라 바꾼다.
 
     m         : load_master()의 결과
     origins_i : 원점의 행 번호 배열
-    scn       : "A"(실측) / "C"(오차 주입). 시나리오 D(날씨 없음)는 날씨를 뺀 모형을 쓰는 것이라 표는 A와 같다
+    scn       : "A"(실측) / "B"(기상청 예보) / "C"(오차 주입). 시나리오 D(날씨 없음)는 날씨를 뺀 모형을 쓰는 것이라 표는 A와 같다
     돌려주는 표의 열: 마스터의 모든 열 + oi(원점 행 번호), lead(0 ~ 6일 뒤).
       달력·수준 변수는 그 날짜의 값 그대로(미리 알거나 과거 값이므로), 날씨만 시나리오 값.
       rain_lag1(전날 강수)은 첫날은 실제 어제 값, 둘째 날부터는 시나리오의 전날 값.
@@ -187,8 +199,20 @@ def future_frame(m, origins_i, scn):
         f["rain_mm"] = np.where(flip & wet2, 5.0, np.where(~wet2, 0.0, rain * noise))   # 맑음→비로 틀리면 5mm로 가정
         f["snow_cm"] = np.where(f.tavg.to_numpy() > 3, 0.0, f.snow_cm.to_numpy())      # 따뜻하다고 예보된 날은 눈 없음
         f = _derive(f)
+    elif scn == "B":
+        # 기상청 과거 예보(py/kma_forecast.py가 만든 표)를 원점·며칠 뒤 기준으로 붙인다
+        kma = _kma_forecast()
+        key = pd.DataFrame({"origin": m.date.to_numpy()[f.oi.to_numpy()], "lead": f.lead.to_numpy()})
+        w = key.merge(kma, on=["origin", "lead"], how="left")
+        if w.tavg.isna().any():
+            miss = key[w.tavg.isna().to_numpy()].origin.dt.date.unique()
+            raise ValueError(f"기상청 예보가 없는 원점이 있다: {miss[:5]} … ({len(miss)}일)")
+        for c in ("tavg", "tmax", "tmin", "rain_mm", "snow_cm"):
+            f[c] = w[c].to_numpy()
+        f = _derive(f)
+        f["rain_any"] = w.rain_any.to_numpy()          # 중기예보 날은 비 올 확률(0 ~ 1), 단기예보 날은 0/1
     elif scn not in ("A", "D"):
-        raise ValueError("시나리오는 A, C, D 중 하나")
+        raise ValueError("시나리오는 A, B, C, D 중 하나")
 
     # 전날 강수: 첫날(lead 0)은 실제 어제 값, 그 뒤는 시나리오의 전날 값
     r = f.rain_mm.to_numpy().reshape(n, 7)
