@@ -26,13 +26,28 @@ from risk_lgb import BASE, FEATS, TARGETS, prep, score   # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = ROOT / "output/models/risk_spec.json"
-REASONS = {
-    "km_since_rep": "마지막 신고 이후 주행거리가 깁니다", "trips_since_rep": "마지막 신고 이후 대여가 많았습니다",
-    "climb_since_rep": "오르막 주행이 많았습니다", "sh_wet": "비 온 뒤 젖은 노면 주행이 많았습니다", "sh_rain": "비 오는 중 주행이 많았습니다",
-    "sham_2w": "최근 빌리자마자 반납된 기록이 있습니다", "rep_13w": "최근 3개월 안에 신고된 적이 있습니다",
-    "age_days": "도입된 지 오래된 자전거입니다", "km_total": "누적 주행거리가 깁니다", "reloc_per_trip": "재배치 이동이 잦았습니다",
-    "freeze_days_since_rep": "얼었다 녹은 날이 많았습니다", "rain_days_since_rep": "비 온 날이 많았습니다",
-    "speed_med": "주행 속도 패턴이 평소와 다릅니다", "last_repaired": "직전 신고 뒤 수거·정비 기록이 없습니다",
+REASONS = {   # 변수가 위험을 '높인' 쪽일 때, 값이 그 주 중앙값보다 높으면 high, 낮으면 low 문구(2B-4: 마지막 신고 이후 거리는 짧을수록 위험)
+    "km_since_rep": {"high": "마지막 신고 이후 주행거리가 깁니다", "low": "마지막 신고 뒤 얼마 안 됐습니다(같은 고장이 다시 신고될 수 있음)"},
+    "days_since_rep": {"high": "마지막 신고 뒤 오래됐습니다", "low": "최근에 신고된 적이 있습니다"},
+    "trips_since_rep": {"high": "마지막 신고 이후 대여가 많았습니다", "low": "마지막 신고 뒤 대여가 거의 없었습니다"},
+    "climb_since_rep": {"high": "오르막 주행이 많았습니다", "low": "오르막 주행이 적었습니다"},
+    "sh_wet": {"high": "비 온 뒤 젖은 노면 주행이 많았습니다", "low": "젖은 노면 주행이 적었습니다"},
+    "sh_rain": {"high": "비 오는 중 주행이 많았습니다", "low": "비 오는 중 주행이 적었습니다"},
+    "sh_commute": {"high": "출퇴근 시간 주행 비중이 높습니다", "low": "출퇴근 시간 주행 비중이 낮습니다"},
+    "sham_2w": {"high": "최근 빌리자마자 반납된 기록이 있습니다", "low": "최근 빌리자마자 반납된 기록은 없습니다"},
+    "rep_13w": {"high": "최근 3개월 안에 신고된 적이 있습니다", "low": "최근 3개월 신고가 없습니다"},
+    "age_days": {"high": "도입된 지 오래된 자전거입니다", "low": "도입된 지 얼마 안 된 자전거입니다"},
+    "km_total": {"high": "누적 주행거리가 깁니다", "low": "누적 주행거리가 짧습니다"},
+    "km_4w": {"high": "최근 4주 주행이 많았습니다", "low": "최근 4주 주행이 적었습니다"},
+    "km": {"high": "이번 주 주행이 많았습니다", "low": "이번 주 주행이 적었습니다"},
+    "reloc_per_trip": {"high": "재배치 이동이 잦았습니다", "low": "재배치 이동이 적었습니다"},
+    "freeze_days_since_rep": {"high": "얼었다 녹은 날이 많았습니다", "low": "얼었다 녹은 날이 적었습니다"},
+    "rain_days_since_rep": {"high": "비 온 날이 많았습니다", "low": "비 온 날이 적었습니다"},
+    "speed_med": {"high": "주행 속도가 평소보다 빠릅니다", "low": "주행 속도가 평소보다 느립니다"},
+    "speed_sd": {"high": "주행 속도가 들쑥날쑥합니다", "low": "주행 속도가 고릅니다"},
+    "last_repaired": {"high": "직전 신고 뒤 수거·정비된 기록이 있습니다", "low": "직전 신고 뒤 수거·정비 기록이 없습니다"},
+    "n_trips": {"high": "이번 주 대여가 많았습니다", "low": "이번 주 대여가 적었습니다"},
+    "minutes": {"high": "이번 주 이용시간이 깁니다", "low": "이번 주 이용시간이 짧습니다"},
 }
 
 

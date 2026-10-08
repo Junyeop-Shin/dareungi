@@ -28,3 +28,9 @@ output/models/*.bin
 
 # 처음 받은 문서 묶음(내용은 프로젝트 폴더로 옮겼다. 중복이라 올리지 않는다)
 dareungi_repo/
+
+# 테스트 채점 결과(77MB)는 깃에 올리지 않는다
+output/models/*.parquet
+serving/
+logs/
+data/db/.ops.lock

@@ -91,6 +91,7 @@ from prep import to_utf8, std_name, read_any, data_files, make_utf8_folder
 - **주 단위 신고 건수는 대부분 이용량이 정한다**(변동의 70~85%). 신고율 쪽에서 크게 움직이는 것은 수준 변화, 타이어 계절성(연중 2.4배), 한파(−4℃ 이하 1.33배)뿐이다. 요일 효과(월 1.10, 토 0.87)는 기간이 달라도 같다. 더위·전날 비는 효과가 없거나 작다. 변수 목록은 `docs/variables_v1.md`. 학습에서 `no_service`, `report_anomaly`인 날은 뺀다.
 - **노출은 대여건수(`rentals`)다**(체크포인트 C, 2026-10-05. 단계 0의 "노출 = 이동거리"를 바꿨다): 이용시간·이동거리보다 AIC 약 195 낮고 검증 오차도 작다. 한파 변수는 `cold_wave`와 `winter_anom`을 둘 다 넣는다. 전날 비는 전체로는 효과가 없고 부품별로 갈린다. 부품별로 모형을 따로 맞춘다. 음이항 회귀 함수는 `py/nbreg.py`.
 - **예측(1C)**: 과제는 부품별 앞으로 7일 합계. 코드는 `py/fc.py`(과제·나이브·시나리오·채점), `py/fc_models.py`(음이항·LightGBM·ARIMAX), `py/fc_dl.py`(GRU). `py/fc_expo.py`(대여량 모형: 예보 오차가 섞인 날씨로 학습한 LightGBM), `py/kma_forecast.py`(기상청 과거 예보 → 원점별 앞으로 7일 예보, 시나리오 B. 기준 시나리오), `py/weather_forecast.py`(JMA 예보, 참고). 대여량 모형은 기상청 예보로 학습한 음이항. 예측 모형은 음이항(페달만 예보로 학습한 판)(`output/models/selection.csv`). `make_base()`는 기본으로 테스트 구간 원점을 만들지 않는다. **테스트 구간 예측·채점은 사람이 승인한 뒤 한 번만.** 맥에서는 lightgbm을 torch보다 먼저 import하고 torch 스레드를 1개로 둔다(안 그러면 프로세스가 죽거나 멈춘다).
+- **운영 파이프라인(3A)**: 작업은 `data/db/.ops.lock` 잠금을 쓰므로 동시에 두 개를 돌리지 않는다. 대시보드는 `serving/*.parquet`만 읽는다. 중기예보 API는 포털 활용신청 전(2026-10-07). crontab 등록은 사람이 한다.
 - **위험 모형 테스트는 2026-10-07에 한 번 열었다**(`risk_eval_test.csv`). 다시 돌리지 않는다. 결과를 보고 `risk_spec.json`을 바꾸지 않는다.
 - **패널(2A-9)**: `km_next`·`repaired_likely`는 라벨 쪽 정보라 2B 설명변수로 쓰지 않는다. 대여소 군집은 2025-06-30까지로만 만든다. 2B 분할: 학습 2024-01 ~ 2025-06, 검증 2025-07 ~ 12, 테스트 2026-01 ~.
 - **대여이력 적재(2A-1, 2026-10-07)**: `data/db/dareungi.duckdb`는 적재 스크립트가 잠그므로 분석 스크립트는 메모리 DB로 Parquet을 읽는다. 2026년 상세 행 수(1,851만)가 일별 대여건수(1,798만)보다 3% 많다 — 2026년 파일에만 있는 0 ~ 1분 기록 때문으로 보인다.
@@ -114,6 +115,8 @@ from prep import to_utf8, std_name, read_any, data_files, make_utf8_folder
 | `py/rc_bike_level.py` | 04b R4b·R5·R6(헛대여 뒤 신고 확률, 신고 후 공백, 신고 없는 중단). 적재 중에는 메모리 DB로 Parquet만 읽는다 |
 | `py/day_signal.py`, `py/rc_changepoint.py`, `py/rc_duplicates.py`, `py/rc_sham.py` | 레짐 원인 사후 분석(04b R1·R2·R4a). 날짜별 헛대여 수(`data/processed/day_signal.parquet`), 변화점, 신고 분해, 헛대여율 대 신고율. 결과는 `docs/notes/04_레짐원인_메모.md` |
 | `docs/report_stage1.md` | 단계 1 보고서 초안(2026-10-07). 숫자는 `output/tables/` 인용, 문장은 사람이 다듬는다 |
+| `app/Home.py`, `app/pages/*.py`, `app/lib.py` | 단계 3B Streamlit 대시보드(① 정비·부품 예측 ② 점검 우선순위 ③ 시민 자전거 조회). `serving/*.parquet`만 읽는다. 실행 `.venv/bin/streamlit run app/Home.py`, 시험 `streamlit.testing.v1.AppTest` |
+| `py/common.py`, `py/panel_sql.py`, `py/jobs/*.py` | 단계 3A 운영 파이프라인: 수집(대여이력·고장신고·날씨·대여소), 헛대여 경보, 매일(주별 요약·패널·품질·bike_card)·매주(위험 점수·주간 예측) 갱신, 스냅샷 발행(`serving/`). 운영 DB `data/db/ops.duckdb`(분석 DB와 별도). 절차·스케줄 `docs/pipeline.md` |
 | `py/risk_alert.py`, `py/risk_interpret.py`, `py/risk_freeze.py` | 2B-5 헛대여 경보 검증, 2B-4 해석 모형(음이항 IRR·Cox), 2B-6 고정(`risk_spec.json`)과 테스트(`--test`, **사람 승인 뒤 한 번만**) |
 | `py/risk_lgb.py` | 단계 2B-3 LightGBM 포아송 + km offset(전체 + 부품별). 모형 `output/models/risk_*.txt`, 검증 설정 `risk_spec_valid.json` |
 | `py/risk_eval.py` | 단계 2B 평가 함수(precision@K, lift)·베이스라인·분할(학습 2024-01 ~ 2025-06 / 검증 2025-07 ~ 12 / 테스트 2026 ~). `load_panel()`은 기본으로 테스트 행을 돌려주지 않는다 |
