@@ -1,0 +1,15 @@
+# Caddy — HTTPS 자동 발급 + Streamlit 두 앱 역프록시. 도메인을 바꾼 뒤 /etc/caddy/Caddyfile 로 복사한다.
+# 관리자 앱(8501)과 시민 조회 앱(8502)은 다른 주소로 연다(08a 설계서 1절). 관리자 앱에는 접근 제한(basic_auth)을 건다.
+admin.dareungi.example.com {
+    basic_auth {
+        # 'caddy hash-password'로 만든 해시를 넣는다
+        manager $2a$14$REPLACE_WITH_HASH
+    }
+    reverse_proxy 127.0.0.1:8501
+    encode gzip
+}
+
+bike.dareungi.example.com {
+    reverse_proxy 127.0.0.1:8502
+    encode gzip
+}

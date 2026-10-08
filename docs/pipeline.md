@@ -11,9 +11,10 @@
 | collect_fail | `py/jobs/collect_fail.py` | 매일 06:10 | `tbCycleFailureReport` | `raw_fail`, 뷰 `fail_live` | 최근 7일 다시 받음. 0건인 날 경보 |
 | collect_wx | `py/jobs/collect_wx.py` | 06:30 (obs), 05:20·17:20 (fcst) | ASOS 시간자료, 단기예보(+103h), 중기예보(4 ~ 10일, 06·18시 발표) | `wx_hourly_live`, `fcst_archive`(src = short / mid) | 예보는 발표 시각과 함께 → 1C '실제 예보' 백테스트 재료. 중기 API 승인 확인 2026-10-07 |
 | collect_station | `py/jobs/collect_station.py` | 월 05:00 | 대여소 API 2종 | `station_hist`, `station_live` | 새 대여소만 고도 API |
-| daily | `py/jobs/daily.py` | 매일 07:00 | 위 표들 | `trips_live_x`, `bw_usage`·`bw_fail`(이번 주), `panel`, `panel_latest`, `bike_card`, `quality_log` | 품질 점검 + 스냅샷 |
-| weekly | `py/jobs/weekly.py` | 월 07:30 | `panel_latest`, 모형 | `bike_risk_latest`, `forecast_weekly` | 완결된 주로만 점수. 예측은 일별 자료 35일 뒤부터 |
+| daily | `py/jobs/daily.py` | 매일 07:00 | 위 표들 + `actuals.refresh()`(일 × 자치구 실적 → `weekly_actual`·`daily_reports`·`forecast_track`) | `trips_live_x`, `bw_usage`·`bw_fail`(이번 주), `panel`, `panel_latest`, `bike_card`, `quality_log` | 품질 점검 + 스냅샷 |
+| weekly | `py/jobs/weekly.py` | 월 07:30 | `panel_latest`, 모형, `daily_district` | `bike_risk_latest`, `forecast_weekly` | 완결된 주로만 점수. 예측 = 구조 나이브, 80% 구간은 `forecast_track` 과거 52주 상대오차 10 ~ 90%로 보정 |
 | publish | `py/jobs/publish.py` | daily·weekly 끝에 | 위 표 | `serving/*.parquet` | 원자적 교체. 대시보드는 이것만 읽음 |
+| actuals | `py/jobs/actuals.py` | daily가 호출. 과거분은 `actuals.py hist` 한 번 | 분석 DB(과거), `trips_live`·`fail_live`(이후) | `daily_district(_hist/_live)`, `weekly_actual`, `daily_reports`, `forecast_track` | 대여 = 대여 대여소의 구, 신고 = 직전 반납 대여소의 구. 과거분은 마스터와 신고 건수 완전 일치 |
 | init_ops | `py/jobs/init_ops.py` | 처음 한 번, 반기 대사 뒤 | 분석 DB | `bw_usage`, `bw_fail`, `bike_info`, `station_base`, `wx_w`, `station_cluster` | '마지막 신고 이후 누적'을 2023-07부터 잇는다 |
 
 공통: `py/common.py`(연결·API·경보·실행 기록·잠금 `data/db/.ops.lock` — 2초마다 최대 5분 대기), `py/panel_sql.py`(분석·운영이 같은 패널 정의).
@@ -41,6 +42,8 @@
 |---|---|
 | 작업이 중간에 죽음 | 그냥 다시 실행. 멱등이라 같은 시간대를 두 번 받아도 결과 같음. 잠금 파일이 30분 넘게 남아 있으면 자동으로 지움 |
 | 특정 날짜를 다시 받고 싶음 | `collect_rent.py 2026-10-06` (그 날 24시간대) |
+| 백필 뒤 주별 요약 다시 | `daily.py --rebuild-from 2026-06-29` (그 주부터 API 자료로 자전거별 주간 요약을 다시 만든다. 매일 실행은 이번 주만) |
+| 고장신고 과거 구간 | `collect_fail.py range 2026-07-01 2026-10-07` (28일씩) |
 | 반기 파일과 API 사이 공백(2026-07-01 ~ 10-04) | `PYTHONUNBUFFERED=1 nohup .venv/bin/python py/jobs/backfill_rent.py 2026-07-01 2026-10-04 > logs/backfill.log &` — 한 시간대씩 받고 3초 쉬어 다른 작업이 끼어들 수 있게. 시간대당 약 20초, 전체 약 10시간(2026-10-07 밤 시작). 멈추면 같은 명령으로 이어서(받은 시간대는 건너뜀) |
 | 모형 바꿈 | `output/models/risk_spec.json`과 모형 파일 교체 → 다음 월요일 weekly에서 반영. 버전은 `model_version`에 남음 |
 | 스키마 변화(API 필드 추가·삭제) | `INSERT BY NAME`에서 오류 → `raw_*` 표를 새 필드로 다시 만들고 뷰 수정 |

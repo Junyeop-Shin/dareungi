@@ -6,11 +6,13 @@
   3. 패널(panel)을 주별 요약 전체 위에서 다시 계산한다(2A-9와 같은 SQL, py/panel_sql.py). panel_latest = 가장 최근 완결 주.
   4. 데이터 품질 점검(3A-7): 시간대별 대여 건수가 지난주 같은 시간의 30% 미만, 작업 실패, 26시간 이상 안 돈 작업, 신고 0건인 날.
   5. bike_card(시민 조회용 집계, 런북 08 정의) → 스냅샷 발행.
+  6. actuals.refresh(): daily_district → weekly_actual, daily_reports, forecast_track(08a 추가 스냅샷) → 발행.
 [전제] init_ops.py로 과거 주별 요약이 들어 있어야 '마지막 신고 이후 누적'이 이어진다.
 [알려진 공백] 반기 파일(~2026-06-30)과 API 수집 시작(2026-10-04) 사이 석 달은 비어 있다. tbCycleRentData는 과거 날짜도 조회되므로
        collect_rent.py YYYY-MM-DD 로 하루씩 채울 수 있다(약 100일 × 24시간대). 채우기 전까지 그 기간의 누적은 과소.
 [출력] ops.duckdb: trips_live_x, bw_usage, bw_fail, panel, panel_latest, bike_card, quality_log; serving/*.parquet
 [실행] .venv/bin/python py/jobs/daily.py
+       .venv/bin/python py/jobs/daily.py --rebuild-from 2026-06-29   (백필 뒤 한 번: 그 주부터 주별 요약을 API 자료로 다시)
 """
 import datetime as dt
 import sys
@@ -22,12 +24,14 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 from common import ROOT, alert, connect, job_lock, log_run, table_exists   # noqa: E402
 from panel_sql import BW_FAIL_SELECT, BW_USAGE_SELECT, PANEL0_SQL, PANEL_SQL, cl_cols_expr, sh_cl_expr   # noqa: E402
 from publish import build_status, publish   # noqa: E402
+import actuals                               # noqa: E402
 
 DETOUR = 1.18          # 2A-4 우회율 중앙값(거리 오류 행을 채울 때)
 LIVE_DAYS = 21
+REBUILD_FROM = None    # '--rebuild-from YYYY-MM-DD'(월요일): 그 주부터 주별 요약을 다시 만든다(백필 뒤 한 번)
 
 
-def build_trips_live_x(con):
+def build_trips_live_x(con, since=None):
     hol = (ROOT / "data/raw/calendar/holidays_2016_2026.csv").as_posix()
     con.execute(f"CREATE OR REPLACE TABLE holidays AS SELECT DISTINCT CAST(date AS DATE) AS date FROM read_csv('{hol}', header = true)")
     station = "station_live" if table_exists(con, "station_live") else "station_base"
@@ -40,7 +44,7 @@ def build_trips_live_x(con):
         (rent_st = rtn_st AND use_min BETWEEN 2 AND 3) AS sham,
         (rent_st = rtn_st AND use_min > 3) AS round_trip,
         ((use_m = 0 AND rent_st <> rtn_st) OR use_m / 1000.0 / NULLIF(use_min / 60.0, 0) > 35) AS dist_bad
-      FROM trips_live WHERE bike_id IS NOT NULL AND rent_dt >= now() - INTERVAL {LIVE_DAYS} DAY),
+      FROM trips_live WHERE bike_id IS NOT NULL AND rent_dt >= {f"TIMESTAMP '{since}'" if since else f'now() - INTERVAL {LIVE_DAYS} DAY'}),
     x AS (
       SELECT t.*,
         (isodow(t.rent_dt) <= 5 AND h.date IS NULL AND (hour(t.rent_dt) BETWEEN 7 AND 9 OR hour(t.rent_dt) BETWEEN 17 AND 19) AND NOT t.round_trip) AS commute,
@@ -59,10 +63,11 @@ def build_trips_live_x(con):
     FROM (SELECT *, lag(rtn_st) OVER (PARTITION BY bike_id ORDER BY rent_dt) AS prev_rtn_st FROM x)""")
 
 
-def refresh_weeks(con, today):
-    cut = today - dt.timedelta(days=today.weekday())                 # 이번 주 월요일
-    if today.weekday() == 0:
-        cut -= dt.timedelta(days=7)                                   # 월요일이면 지난주도
+def refresh_weeks(con, today, cut=None):
+    if cut is None:
+        cut = today - dt.timedelta(days=today.weekday())             # 이번 주 월요일
+        if today.weekday() == 0:
+            cut -= dt.timedelta(days=7)                               # 월요일이면 지난주도
     con.execute("DELETE FROM bw_usage WHERE wk >= ?", [cut])
     con.execute("INSERT INTO bw_usage BY NAME " + BW_USAGE_SELECT.format(sh_cl=sh_cl_expr(), src="trips_live_x", cluster="station_cluster",
                                                                         extra_where=f"AND rent_dt >= DATE '{cut}'"))
@@ -73,6 +78,15 @@ def refresh_weeks(con, today):
         con.execute("DELETE FROM bw_fail WHERE wk >= ?", [cut])
         con.execute("INSERT INTO bw_fail BY NAME " + BW_FAIL_SELECT.format(src="fail_gap_live", extra_where=f"WHERE reg_ts >= DATE '{cut}'"))
     return cut
+
+
+def add_new_bikes(con):
+    """API에서 처음 보이는 자전거(분석 DB 이후 도입)를 bike_info에 더한다. 처음 등장 = 도입으로 본다(2022-03 이후 번호라 나이를 안다)"""
+    n0 = con.execute("SELECT count(*) FROM bike_info").fetchone()[0]
+    con.execute("""INSERT INTO bike_info BY NAME
+        SELECT bike_id, mode(bike_type) AS bike_type, min(rent_dt) AS first_dt, 0.0 AS km_pre, 0 AS trips_pre, TRUE AS age_known
+        FROM trips_live WHERE bike_id IS NOT NULL AND bike_id NOT IN (SELECT bike_id FROM bike_info) GROUP BY bike_id""")
+    return con.execute("SELECT count(*) FROM bike_info").fetchone()[0] - n0
 
 
 def rebuild_panel(con, today):
@@ -107,6 +121,32 @@ def quality_checks(con):
     return issues
 
 
+REPORT_DAYS = 7           # '최근 신고된 자전거'로 따로 보는 기간(점검 권장 목록에서는 빼고 따로 보여 준다). 사람 결정 2026-10-08: 14일 → 7일
+
+
+def build_reported_recent(con):
+    """최근 REPORT_DAYS일 안에 고장 신고된 자전거: 마지막 신고 시각, 신고 부품, 신고 건수, 신고 뒤 대여 횟수·첫 대여 시각,
+    (신고하면 대체로 대여가 막힌다: 2026-09 신고의 2.5%만 1시간 안에 다시 대여, 다음 대여까지 중앙값 약 40시간.
+     그래서 '신고 뒤 대여 없음' = 수리 대기로 보이는 자전거, '신고 뒤 대여 있음' = 점검·수리 뒤 다시 운행에 들어간 자전거로 읽는다)
+    마지막 반납 대여소·시각. 점검 대상 화면의 '최근 고장 신고된 자전거' 목록과, 점검 권장 목록에서 뺄 자전거 판별에 쓴다"""
+    station = "station_live" if table_exists(con, "station_live") else "station_base"
+    con.execute(f"""
+    CREATE OR REPLACE TABLE reported_recent AS
+    WITH f AS (SELECT DISTINCT bike_id, reg_ts, kind FROM fail_live
+               WHERE bike_id IS NOT NULL AND reg_ts >= now() - INTERVAL {REPORT_DAYS} DAY),
+         b AS (SELECT bike_id, max(reg_ts) AS last_report_ts, count(DISTINCT reg_ts) AS n_reports,
+                      string_agg(DISTINCT kind, ', ' ORDER BY kind) AS kinds
+               FROM f GROUP BY 1),
+         t AS (SELECT DISTINCT ON (bike_id, rent_dt, rent_st) bike_id, rent_dt, rtn_dt, rtn_st FROM trips_live WHERE bike_id IS NOT NULL)
+    SELECT b.*,
+           (SELECT count(*) FROM t WHERE t.bike_id = b.bike_id AND t.rent_dt > b.last_report_ts) AS rentals_after,
+           (SELECT min(t.rent_dt) FROM t WHERE t.bike_id = b.bike_id AND t.rent_dt > b.last_report_ts) AS first_rent_after,
+           l.last_st, l.last_rtn_dt, s.st_name AS last_st_name, s.district
+    FROM b
+    LEFT JOIN (SELECT bike_id, arg_max(rtn_st, rtn_dt) AS last_st, max(rtn_dt) AS last_rtn_dt FROM t WHERE rtn_dt IS NOT NULL GROUP BY 1) l USING (bike_id)
+    LEFT JOIN {station} s ON l.last_st = s.st_no""")
+
+
 def build_bike_card(con):
     con.execute("""
     CREATE OR REPLACE TABLE bike_card AS
@@ -129,17 +169,20 @@ def run():
             for need in ("raw_rent", "bw_usage", "bike_info"):
                 if not table_exists(con, need):
                     raise RuntimeError(f"{need} 없음 — collect_rent / init_ops 먼저")
-            build_trips_live_x(con)
-            cut = refresh_weeks(con, today)
+            since = REBUILD_FROM
+            build_trips_live_x(con, since)
+            cut = refresh_weeks(con, today, dt.date.fromisoformat(since) if since else None)
+            n_new = add_new_bikes(con)
             wk, n = rebuild_panel(con, today)
             issues = quality_checks(con)
             build_bike_card(con)
+            build_reported_recent(con)
             build_status(con)
-            for t in ("bike_card", "data_status", "alerts_live"):
+            for t in ("bike_card", "reported_recent", "data_status", "alerts_live"):
                 if table_exists(con, t):
                     publish(con, t)
-            log_run(con, "daily", "ok", f"주별 요약 {cut}~ 교체, 패널 최신 주 {wk} {n}대, 품질 이슈 {len(issues)}")
-            print(f"daily: 주별 요약 {cut}~ 교체, 패널 최신 완결 주 {wk} ({n:,}대), 품질 이슈 {len(issues)}건")
+            log_run(con, "daily", "ok", f"주별 요약 {cut}~ 교체, 새 자전거 {n_new}, 패널 최신 주 {wk} {n}대, 품질 이슈 {len(issues)}")
+            print(f"daily: 주별 요약 {cut}~ 교체, 새 자전거 {n_new}대, 패널 최신 완결 주 {wk} ({n:,}대), 품질 이슈 {len(issues)}건")
         except Exception as e:
             log_run(con, "daily", "fail", str(e)); alert(f"daily 실패: {e}")
             raise
@@ -148,4 +191,9 @@ def run():
 
 
 if __name__ == "__main__":
+    if "--rebuild-from" in sys.argv:
+        REBUILD_FROM = sys.argv[sys.argv.index("--rebuild-from") + 1]
     run()
+    actuals.refresh()                       # 주별·일별 실적과 예측 실적(자체 잠금)
+    from publish import run as publish_run
+    publish_run(["weekly_actual", "daily_reports", "forecast_track", "data_status"])

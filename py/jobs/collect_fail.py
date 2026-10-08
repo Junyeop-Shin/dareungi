@@ -6,6 +6,7 @@
   - 단계 0 Q1: API 시차 0 ~ 1일 → 이 작업을 켠다
 [출력] ops.duckdb: raw_fail, 뷰 fail_live(bike_id, reg_ts, kind), job_runs
 [실행] .venv/bin/python py/jobs/collect_fail.py [days=7]
+       .venv/bin/python py/jobs/collect_fail.py range 2026-07-01 2026-10-07   (과거 구간: 28일씩 나눠 받는다 — API가 시작일부터 약 30일만 주므로)
 """
 import datetime as dt
 import sys
@@ -49,5 +50,35 @@ def run(days=7):
             con.close()
 
 
+def run_range(a, b, step=28):
+    """a ~ b(날짜)를 step일씩 받는다. 각 조각은 그 조각의 날짜만 지우고 다시 넣는다(멱등)"""
+    d = a
+    with job_lock():
+        con = connect()
+        try:
+            total = 0
+            while d <= b:
+                e = min(d + dt.timedelta(days=step - 1), b)
+                _, rows = fetch_all("tbCycleFailureReport", d.strftime("%Y%m%d"))
+                df = pd.DataFrame(rows).drop(columns=["START_INDEX", "END_INDEX", "RNUM"], errors="ignore").astype(str)
+                if not df.empty:
+                    df["reg_date"] = pd.to_datetime(df["regDttm"], errors="coerce").dt.date.astype(str)
+                    df = df[(df.reg_date >= str(d)) & (df.reg_date <= str(e))]
+                n = upsert_rows(con, "raw_fail", df, "reg_date BETWEEN ? AND ?", (str(d), str(e)))
+                total += n
+                print(f"collect_fail range: {d} ~ {e} {n}행", flush=True)
+                d = e + dt.timedelta(days=1)
+            con.execute(VIEW)
+            log_run(con, "collect_fail_range", "ok", f"{a}~{b} {total}행")
+        except Exception as ex:
+            log_run(con, "collect_fail_range", "fail", str(ex)); alert(f"collect_fail range 실패: {ex}")
+            raise
+        finally:
+            con.close()
+
+
 if __name__ == "__main__":
-    run(int(sys.argv[1]) if len(sys.argv) > 1 else 7)
+    if len(sys.argv) > 1 and sys.argv[1] == "range":
+        run_range(*(dt.datetime.strptime(x, "%Y-%m-%d").date() for x in sys.argv[2:4]))
+    else:
+        run(int(sys.argv[1]) if len(sys.argv) > 1 else 7)

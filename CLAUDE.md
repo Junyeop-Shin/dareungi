@@ -115,8 +115,8 @@ from prep import to_utf8, std_name, read_any, data_files, make_utf8_folder
 | `py/rc_bike_level.py` | 04b R4b·R5·R6(헛대여 뒤 신고 확률, 신고 후 공백, 신고 없는 중단). 적재 중에는 메모리 DB로 Parquet만 읽는다 |
 | `py/day_signal.py`, `py/rc_changepoint.py`, `py/rc_duplicates.py`, `py/rc_sham.py` | 레짐 원인 사후 분석(04b R1·R2·R4a). 날짜별 헛대여 수(`data/processed/day_signal.parquet`), 변화점, 신고 분해, 헛대여율 대 신고율. 결과는 `docs/notes/04_레짐원인_메모.md` |
 | `docs/report_stage1.md` | 단계 1 보고서 초안(2026-10-07). 숫자는 `output/tables/` 인용, 문장은 사람이 다듬는다 |
-| `app/Home.py`, `app/pages/*.py`, `app/lib.py` | 단계 3B Streamlit 대시보드(① 정비·부품 예측 ② 점검 우선순위 ③ 시민 자전거 조회). `serving/*.parquet`만 읽는다. 실행 `.venv/bin/streamlit run app/Home.py`, 시험 `streamlit.testing.v1.AppTest` |
-| `py/common.py`, `py/panel_sql.py`, `py/jobs/*.py` | 단계 3A 운영 파이프라인: 수집(대여이력·고장신고·날씨·대여소), 헛대여 경보, 매일(주별 요약·패널·품질·bike_card)·매주(위험 점수·주간 예측) 갱신, 스냅샷 발행(`serving/`). 운영 DB `data/db/ops.duckdb`(분석 DB와 별도). 절차·스케줄 `docs/pipeline.md` |
+| `app/admin/`, `app/citizen/`, `app/common/` | 단계 3B 대시보드(설계 `docs/reference/08a`). 관리자 앱 = 홈 + 정비·부품 예측 + 점검 우선순위(`st.navigation`, 자치구 필터 공유·주소 동기화), 시민 조회는 별도 앱. 홈은 사람이 준 시안. 라이트·다크 두 테마(`.streamlit/config.toml`). 화면 색은 양쪽에서 읽히는 한 벌(`app/common/theme.py` — 테마를 바꿔도 다시 그려지지 않으므로 테마별 색 금지). 점검 대상은 정비 구역(강남·강북, 한강 기준 임의) → 자치구, 최근 7일 신고 자전거(`reported_recent`)는 점검 권장에서 뺀다. 신고되면 대체로 대여가 막힌다(신고 뒤 대여 없음 = 수리 대기로 보임). `serving/*.parquet`만 읽는다. 실행 `streamlit run app/admin/Home.py --server.port 8501`, `streamlit run app/citizen/app.py --server.port 8502`. 시험 `streamlit.testing.v1.AppTest` |
+| `py/common.py`, `py/panel_sql.py`, `py/jobs/*.py` | 단계 3A 운영 파이프라인(`actuals.py` = 일 × 자치구 실적·주별 실적·예측 실적): 수집(대여이력·고장신고·날씨·대여소), 헛대여 경보, 매일(주별 요약·패널·품질·bike_card)·매주(위험 점수·주간 예측) 갱신, 스냅샷 발행(`serving/`). 운영 DB `data/db/ops.duckdb`(분석 DB와 별도). 절차·스케줄 `docs/pipeline.md` |
 | `py/risk_alert.py`, `py/risk_interpret.py`, `py/risk_freeze.py` | 2B-5 헛대여 경보 검증, 2B-4 해석 모형(음이항 IRR·Cox), 2B-6 고정(`risk_spec.json`)과 테스트(`--test`, **사람 승인 뒤 한 번만**) |
 | `py/risk_lgb.py` | 단계 2B-3 LightGBM 포아송 + km offset(전체 + 부품별). 모형 `output/models/risk_*.txt`, 검증 설정 `risk_spec_valid.json` |
 | `py/risk_eval.py` | 단계 2B 평가 함수(precision@K, lift)·베이스라인·분할(학습 2024-01 ~ 2025-06 / 검증 2025-07 ~ 12 / 테스트 2026 ~). `load_panel()`은 기본으로 테스트 행을 돌려주지 않는다 |
@@ -124,6 +124,7 @@ from prep import to_utf8, std_name, read_any, data_files, make_utf8_folder
 | `docs/phase0_result.md`, `docs/schema_map.csv` | 단계 0 결과, 열 이름 대응표 |
 | `docs/reference/01~06` | 1차 분석 검토, 변수 실증, 설계 쟁점, 타당성 검토(출처 포함) |
 | `docs/reference/07~10` | 신고율 변화 원인 조사, 외부환경 타임라인, 조사자료 검증, 외부요인 정리 |
+| `docs/reference/08a_대시보드_화면설계.md` | 대시보드 화면 설계(사람 작성, 2026-10-08). 08 문서와 다르면 이것을 따른다 |
 | `docs/reference/04b_레짐_원인_분석.md` | 레짐 원인 사후 분석 계획(사람 작성, 2026-10-07 검토 반영). 예측 모형 선택에는 쓰지 않는다 |
 | `py/prep.py`, `py/seoul_api.py` | 공용 함수(인코딩·파일 읽기, 서울 열린데이터 API) |
 | `py/use_daily.py`, `py/rent_history_daily.py`, `py/bike_month.py`, `py/failure_gaps.py` | 대용량 원본을 날짜별·자전거별 합계로 줄이는 스크립트, 고장신고 빠진 날 API 수집. 결과는 `data/interim/`, `data/raw/failure_api/` |

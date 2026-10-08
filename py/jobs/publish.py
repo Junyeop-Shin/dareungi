@@ -4,6 +4,8 @@
          임시 파일에 쓴 뒤 os.replace로 원자적으로 바꿔, 반쯤 쓰인 파일을 읽는 일이 없게 한다.
   bike_risk_latest  자전거별 위험 점수·등급·이유(weekly.py)        forecast_weekly  부품별 주간 예측(weekly.py)
   bike_card         시민 조회용 집계(daily.py)                    alerts_live      헛대여 경보(detect_sham.py)
+  weekly_actual     주 × 자치구 대여·신고(actuals.py)                daily_reports    일 × 자치구 × 부품 신고(actuals.py)
+  forecast_track    주별 예측·실제·나이브(actuals.py)            reported_recent  최근 14일 고장 신고된 자전거(daily.py)
   data_status       각 데이터의 최신 시각(화면의 '기준 시각')
 [실행] .venv/bin/python py/jobs/publish.py   (daily.py·weekly.py 끝에서도 호출)
 """
@@ -15,7 +17,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 from common import ROOT, connect, job_lock, log_run, table_exists   # noqa: E402
 
 SERVING = ROOT / "serving"
-SNAPSHOTS = ["bike_risk_latest", "bike_card", "forecast_weekly", "alerts_live", "data_status"]
+SNAPSHOTS = ["bike_risk_latest", "bike_card", "forecast_weekly", "forecast_track", "alerts_live", "weekly_actual", "daily_reports", "reported_recent", "data_status"]
 
 
 def publish(con, table, name=None):
