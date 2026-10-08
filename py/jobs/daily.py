@@ -130,11 +130,13 @@ REPORT_DAYS = 7           # 이 기간 안에 신고된 자전거는 점검 권�
 def build_reported_recent(con):
     """최근 REPORT_DAYS일 안에 고장 신고된 자전거 목록을 만든다.
 
-    열: 마지막 신고 시각, 신고 부품, 신고 건수, 신고 뒤 대여 횟수·첫 대여 시각, 마지막 반납 대여소·시각.
+    열: 마지막 신고 시각, 신고 부품, 신고 건수, 신고 뒤 대여 횟수·첫 대여 시각, 신고 당시 자리(st_at_report),
+        신고 뒤 첫 대여가 시작된 대여소(first_rent_st), 둘이 같은지(same_st_after), 마지막 반납 대여소·시각.
     점검 대상 화면의 '최근 고장 신고된 자전거' 목록과, 점검 권장 목록에서 뺄 자전거를 가리는 데 쓴다.
 
-    신고되면 대체로 대여가 막힌다(2026-09 신고의 2.5%만 1시간 안에 다시 대여, 다음 대여까지 중앙값 약 40시간).
-    그래서 신고 뒤 대여가 없으면 수리 대기, 있으면 점검·수리 뒤 다시 운행에 들어간 자전거로 본다.
+    신고가 곧바로 대여를 막지는 않는다(2025-07 ~ 11 신고의 30%가 24시간 안에 다시 대여, 대부분 그 자리에서. docs/notes/07 R13·R18).
+    자전거는 빌리지 않으면 움직이지 않으므로, 신고 뒤 첫 대여가 신고 당시 자리에서 시작했으면 수거되지 않은 채 다시 운행된 것이고
+    다시 신고될 위험도 두 배쯤 높다. 다른 곳에서 시작했으면 수거·수리 뒤 재배치로 본다. 신고 뒤 대여가 없으면 수리 대기로 본다.
     """
     station = "station_live" if table_exists(con, "station_live") else "station_base"
     con.execute(f"""
@@ -144,14 +146,18 @@ def build_reported_recent(con):
          b AS (SELECT bike_id, max(reg_ts) AS last_report_ts, count(DISTINCT reg_ts) AS n_reports,
                       string_agg(DISTINCT kind, ', ' ORDER BY kind) AS kinds
                FROM f GROUP BY 1),
-         t AS (SELECT DISTINCT ON (bike_id, rent_dt, rent_st) bike_id, rent_dt, rtn_dt, rtn_st FROM trips_live WHERE bike_id IS NOT NULL)
+         t AS (SELECT DISTINCT ON (bike_id, rent_dt, rent_st) bike_id, rent_dt, rtn_dt, rent_st, rtn_st FROM trips_live WHERE bike_id IS NOT NULL)
     SELECT b.*,
            (SELECT count(*) FROM t WHERE t.bike_id = b.bike_id AND t.rent_dt > b.last_report_ts) AS rentals_after,
            (SELECT min(t.rent_dt) FROM t WHERE t.bike_id = b.bike_id AND t.rent_dt > b.last_report_ts) AS first_rent_after,
+           (SELECT arg_max(t.rtn_st, t.rent_dt) FROM t WHERE t.bike_id = b.bike_id AND t.rent_dt <= b.last_report_ts) AS st_at_report,
+           (SELECT arg_min(t.rent_st, t.rent_dt) FROM t WHERE t.bike_id = b.bike_id AND t.rent_dt > b.last_report_ts) AS first_rent_st,
            l.last_st, l.last_rtn_dt, s.st_name AS last_st_name, s.district
     FROM b
     LEFT JOIN (SELECT bike_id, arg_max(rtn_st, rtn_dt) AS last_st, max(rtn_dt) AS last_rtn_dt FROM t WHERE rtn_dt IS NOT NULL GROUP BY 1) l USING (bike_id)
     LEFT JOIN {station} s ON l.last_st = s.st_no""")
+    con.execute("ALTER TABLE reported_recent ADD COLUMN same_st_after BOOLEAN")
+    con.execute("UPDATE reported_recent SET same_st_after = first_rent_st = st_at_report WHERE first_rent_st IS NOT NULL")
 
 
 def build_bike_card(con):

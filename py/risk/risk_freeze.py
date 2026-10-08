@@ -12,8 +12,8 @@ output/models/risk_spec.json에 적는다. 이 파일은 테스트 전에 커밋
 출력: output/models/risk_spec.json
       --test: output/models/risk_{name}_final.txt, risk_scores_test.parquet,
               output/tables/risk_eval_test.csv, risk_calibration_test.csv
-실행: .venv/bin/python py/risk_freeze.py           (고정만)
-      .venv/bin/python py/risk_freeze.py --test    (고정 + 테스트 채점)
+실행: .venv/bin/python py/risk/risk_freeze.py           (고정만)
+      .venv/bin/python py/risk/risk_freeze.py --test    (고정 + 테스트 채점)
 """
 import json
 import sys
@@ -24,11 +24,11 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
-sys.path.append(str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parents[1]))   # py/ 공용 모듈
 from risk_eval import BASELINES, evaluate, load_panel   # noqa: E402
 from risk_lgb import BASE, FEATS, TARGETS, prep, score   # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SPEC = ROOT / "output/models/risk_spec.json"
 REASONS = {
     "km_since_rep": {

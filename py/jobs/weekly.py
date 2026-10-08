@@ -2,10 +2,12 @@
 
   1. score_risk: 가장 최근 완결 주의 패널(panel_latest)에 고정해 둔 위험 모형(output/models/risk_spec.json,
      risk_*_final.txt)을 적용한다. 자전거마다 1,000km당 위험률(보정 배율 적용), 기대 신고 수(위험률 × 최근 4주 평균 km),
-     그 주 백분위와 등급(점검 권장 95% / 주의 80% / 보통 50%), 위험을 높인 변수 3개의 이유 문구(SHAP),
+     다음 주 신고 확률(1 − e^−기대 신고 수)과 그 주 평균 대비 배수, 확률 기준 백분위와 등급(점검 권장 95% / 주의 80% / 보통 50%),
+     다음 신고까지 예상 km·주, 위험을 높인 변수 3개의 이유 문구(SHAP. 1km당 위험을 설명하고, 주행량은 화면에 따로 보여 준다),
      마지막 반납 대여소·자치구를 붙인다. 공단 화면은 이걸 다 쓰고, 시민 화면은 등급·이유만 쓴다.
      최근 4주 주행이 0인 자전거는 순위에서 빼고 등급을 '산정 제외'로 둔다.
-  2. forecast_weekly: 부품별 다음 7일 신고 = 최근 4주 신고율 × 대여량 예측(py/fc_ops.py).
+  2. forecast_weekly: 부품별 이번 주(월 ~ 일) 신고 = 최근 4주 신고율 × 대여량 예측(py/fc_ops.py). 월요일이 아닌 날
+     돌려도(따라잡기) 원점은 그 주 월요일이고, 월요일 아침까지의 자료·예보만 쓴다.
      대여량은 기상청 예보로 예측한 값(예보판, 1C의 S1_B)을 보여 주고, 예보가 하루라도 비면 달력만으로 예측한 값
      (달력판)으로 대신한다. 두 값은 매주 pred_kma, pred_cal에 같이 남긴다. 원천은 daily_district(actuals.py),
      fcst_archive(collect_wx.py). 80% 구간은 2024 검증 구간 오차로 고정한 값(output/models/fc_ops_spec.json).
@@ -27,6 +29,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
+sys.path.append(str(Path(__file__).resolve().parents[1] / "risk"))   # risk_lgb.prep(위험 모형 입력 가공)
 import fc_ops   # noqa: E402
 from common import ROOT, alert, connect, job_lock, log_run, table_exists   # noqa: E402
 from publish import build_status, publish   # noqa: E402
@@ -49,7 +52,15 @@ def score_risk(con):
     latest["rate_1000km"] = np.exp(raw) * 1000 * m["calibration_scale"]
     latest["expected_reports"] = np.exp(raw) * m["calibration_scale"] * latest.km_4w / 4
     ranked = latest.km_4w > 0
-    latest["pct"] = np.where(ranked, latest.rate_1000km.where(ranked).rank(pct=True), np.nan)
+    # 순위·등급은 '다음 주에 한 번이라도 신고될 확률'로 매긴다(2026-10-08 결정, docs/notes/07 R19). 1,000km당 위험률은 적게 탄
+    # 자전거를 높게 쳐서 실제 다음 주 신고를 덜 맞혔다. 화면에는 %가 아니라 그 주 평균 대비 배수만 보여 준다
+    # (확률의 절대 수준은 계절에 따라 20%쯤 어긋나지만 배수는 거의 그대로다)
+    latest["prob_next"] = 1 - np.exp(-latest.expected_reports)
+    avg = latest.prob_next.where(ranked).mean()
+    latest["risk_ratio"] = (latest.prob_next / avg).where(ranked)
+    latest["pct"] = np.where(ranked, latest.prob_next.where(ranked).rank(pct=True), np.nan)
+    latest["km_to_report"] = 1000 / latest.rate_1000km                                     # 다음 신고까지 예상 주행거리
+    latest["weeks_to_report"] = (latest.km_to_report / (latest.km_4w / 4)).where(ranked)   # 지금 타는 만큼 타면 몇 주 뒤
     cut = spec["grade_by_weekly_percentile"]
     latest["grade"] = np.select([~ranked, latest.pct >= cut["점검 권장"], latest.pct >= cut["주의"], latest.pct >= cut["보통"]],
                                 ["산정 제외", "점검 권장", "주의", "보통"], default="낮음")
@@ -68,7 +79,10 @@ def score_risk(con):
         mp = spec["models"][part]
         b = lgb.Booster(model_file=str(ROOT / "output/models" / mp["file"]))
         latest[f"rate_{part}"] = np.exp(b.predict(X, raw_score=True)) * 1000 * mp["calibration_scale"]
-    out = latest[["bike_id", "wk", "rate_1000km", "expected_reports", "pct", "grade", "reasons", "rate_tire", "rate_chain", "rate_saddle", "rate_pedal",
+        pp = 1 - np.exp(-latest[f"rate_{part}"] * latest.km_4w / 4 / 1000)               # 부품도 다음 주 확률 → 평균 대비 배수
+        latest[f"ratio_{part}"] = (pp / pp.where(ranked).mean()).where(ranked)
+    out = latest[["bike_id", "wk", "rate_1000km", "expected_reports", "prob_next", "risk_ratio", "km_to_report", "weeks_to_report", "pct", "grade", "reasons",
+                  "rate_tire", "rate_chain", "rate_saddle", "rate_pedal", "ratio_tire", "ratio_chain", "ratio_saddle", "ratio_pedal",
                   "km_4w", "km_since_rep", "rep_13w", "sham_2w", "bike_type"]].copy()
     out["model_version"] = spec["version"]
     con.register("out_", out)
@@ -99,6 +113,11 @@ def forecast_weekly(con, today):
     models, spec = fc_ops.load_models()
     arch = con.execute("SELECT * FROM fcst_archive WHERE issue_ts >= ?", [today - dt.timedelta(days=4)]).df() if table_exists(con, "fcst_archive") else None
     wx = fc_ops.kma_live(arch, today) if arch is not None and len(arch) else None
+    past = ROOT / "data/interim/weather_forecast/kma_by_origin.parquet"     # 실시간 수집 전 주는 1C 과거 예보 파일(맥북에만 있음)
+    if wx is None and past.exists():
+        k = pd.read_parquet(past)
+        k = k[k.origin == pd.Timestamp(today)].sort_values("lead")
+        wx = k if len(k) == 7 else None
     bad, ns = fc_ops.master_flags()
     r = fc_ops.forecast(d, today, wx, models, spec, bad=bad, no_service=ns)
     shown = "kma" if r["kma"] is not None else "cal"
@@ -119,13 +138,14 @@ def forecast_weekly(con, today):
 
 def run():
     today = dt.date.today()
+    monday = today - dt.timedelta(days=today.weekday())     # 주간 예측은 언제 돌려도 그 주 월요일 ~ 일요일
     with job_lock():
         con = connect()
         try:
             if not table_exists(con, "panel_latest"):
                 raise RuntimeError("panel_latest 없음 — daily.py 먼저")
             wk, n, grades = score_risk(con)
-            days, done, shown = forecast_weekly(con, today)
+            days, done, shown = forecast_weekly(con, monday)
             build_status(con)
             for t in ("bike_risk_latest", "forecast_weekly", "forecast_track", "data_status"):
                 publish(con, t)

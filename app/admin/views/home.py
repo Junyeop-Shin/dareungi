@@ -23,7 +23,8 @@ p = theme.P()
 fc, risk, alerts, wa = data.load("forecast_weekly"), data.load("bike_risk_latest"), data.load("alerts_live"), data.load("weekly_actual")
 risk_un = ui.exclude_reported(risk)                    # 최근 신고된 자전거는 점검 권장 집계에서 뺀다
 risk_f, alerts_f = data.apply_gu(risk_un), data.apply_gu(alerts)
-has_fc = fc is not None and not fc.empty and fc.pred.notna().any()
+fc = fc[fc.pred.notna()] if fc is not None and len(fc) else fc
+has_fc = fc is not None and not fc.empty
 latest_fc = fc[fc.issue_date == fc.issue_date.max()].set_index("part") if has_fc else None
 period = texts.week_range(fc.issue_date.max()) if has_fc else ""
 wk = ui.complete_weeks(data.apply_gu(wa)) if wa is not None and len(wa) else None
@@ -35,9 +36,11 @@ k1, k2, k3, k4 = st.columns(4)
 with k1:
     if has_fc and "전체" in latest_fc.index:
         r = latest_fc.loc["전체"]
-        ui.kpi("다음 7일 예상 고장 신고", f"{r.pred:,.0f}건", f"{period}<br>예상 범위 {r.lo80:,.0f}~{r.hi80:,.0f}건{seoul_only}", help=texts.RANGE_HELP)
+        so_far, upto = ui.week_so_far(fc.issue_date.max())
+        done = f"지금까지 {so_far.get('전체', 0):,.0f}건({upto:%-m/%-d}까지)" if so_far else "아직 이번 주 집계 전"
+        ui.kpi("이번 주 예상 고장 신고", f"{r.pred:,.0f}건", f"{period} · {done}<br>예상 범위 {r.lo80:,.0f}~{r.hi80:,.0f}건{seoul_only}", help=texts.RANGE_HELP)
     else:
-        ui.kpi("다음 7일 예상 고장 신고", "—", "매주 월요일 아침에 나옵니다")
+        ui.kpi("이번 주 예상 고장 신고", "—", "매주 월요일 아침에 나옵니다")
 with k2:
     if wk is not None and len(wk):
         g = wk.groupby("week")[["rentals", "reports"]].sum().sort_index()
@@ -69,7 +72,7 @@ st.write("")
 c1, c2 = st.columns(2)
 with c1:
     with st.container(border=True):
-        ui.card_title("부품별 예상 고장 신고", P1, "부품별 고장 예측", sub=f"다음 7일({period}) 동안 들어올 것으로 예상되는 신고 건수{seoul_only}" if has_fc else None)
+        ui.card_title("부품별 예상 고장 신고", P1, "부품별 고장 예측", sub=f"이번 주({period}) 들어올 것으로 예상되는 신고 건수{seoul_only}" if has_fc else None)
         if has_fc:
             f = latest_fc.reindex(texts.PARTS).dropna(subset=["pred"]).sort_values("pred")
             fig = go.Figure(go.Bar(y=f.index, x=f.pred, orientation="h", marker_color=p["primary"], width=0.42,
@@ -86,10 +89,10 @@ with c1:
             st.markdown('<div class="card-caption">막대: 예상 건수 · 가는 선: 예상 범위 · 오른쪽 숫자: 준비해 두면 좋은 부품 수(범위의 위쪽 끝)</div>',
                         unsafe_allow_html=True)
         else:
-            ui.empty("매주 월요일 아침에 다음 7일 예측이 나옵니다.")
+            ui.empty("매주 월요일 아침에 이번 주 예측이 나옵니다.")
 with c2:
     with st.container(border=True):
-        ui.card_title("주별 고장 신고 건수", P1, "자세히", sub=f"최근 12주 실제 신고와 그때 예상한 건수{'' if data.get_gu() else ', 다음 7일 예상'}")
+        ui.card_title("주별 고장 신고 건수", P1, "자세히", sub=f"최근 12주 실제 신고와 그때 예상한 건수{'' if data.get_gu() else ', 이번 주 예상'}")
         if wk is not None and len(wk):
             w = wk.groupby("week").reports.sum().sort_index().tail(12)
             fig = go.Figure()
@@ -108,10 +111,10 @@ with c2:
                 nx = data.shift_days(w.index.max(), 7)
                 fig.add_shape(type="rect", x0=data.shift_days(nx, -3), x1=data.shift_days(nx, 3), y0=r.lo80, y1=r.hi80,
                               fillcolor=p["primary_dark"], opacity=0.35, line_width=0)
-                fig.add_scatter(x=[nx], y=[r.pred], mode="markers", name="다음 7일 예상",
+                fig.add_scatter(x=[nx], y=[r.pred], mode="markers", name="이번 주 예상",
                                 marker=dict(size=10, color="rgba(0,0,0,0)", line=dict(color=p["primary_mid"], width=2)),
-                                hovertemplate=f"다음 7일 예상 {r.pred:,.0f}건 (범위 {r.lo80:,.0f}~{r.hi80:,.0f})<extra></extra>")
-                ticks.append(nx); labels.append("다음 7일")
+                                hovertemplate=f"이번 주 예상 {r.pred:,.0f}건 (범위 {r.lo80:,.0f}~{r.hi80:,.0f})<extra></extra>")
+                ticks.append(nx); labels.append("이번 주")
             fig.update_layout(height=230, xaxis=dict(tickvals=ticks, ticktext=labels, showgrid=False),
                               yaxis=dict(tickformat=","), legend=dict(y=-0.2))
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
@@ -143,7 +146,7 @@ with c4:
     with st.container(border=True):
         ui.card_title("먼저 점검할 자전거", P2, "전체 목록", sub="아직 고장 신고되지 않은 자전거 중 고장 신고 가능성 상위 5대")
         if risk_f is not None and len(risk_f):
-            ui.bike_rows(risk_f[risk_f.grade != "산정 제외"].sort_values("rate_1000km", ascending=False), n=5)
+            ui.bike_rows(risk_f[risk_f.grade != "산정 제외"].sort_values("risk_ratio", ascending=False), n=5)
         else:
             ui.empty("선택한 지역에 점검 권장 자전거가 없습니다.")
 with c5:

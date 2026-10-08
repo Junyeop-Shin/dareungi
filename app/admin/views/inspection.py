@@ -13,6 +13,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pydeck as pdk
 import streamlit as st
@@ -63,26 +64,34 @@ with st.container(border=True):
         ui.empty(f"{area_label}에는 최근 48시간 동안 없습니다.")
 
 # ── ② 최근 고장 신고된 자전거 ───────────────────────────
-# 신고되면 대체로 대여가 막힌다(9월 신고의 2.5%만 1시간 안에 다시 대여, 다음 대여까지 중앙값 약 40시간).
-# 그래서 신고 뒤 대여가 없으면 수리 대기, 있으면 점검·수리 뒤 다시 운행에 들어간 것으로 본다.
+# 신고가 곧바로 대여를 막지는 않는다(신고의 30%가 24시간 안에, 대부분 그 자리에서 다시 대여. docs/notes/07 R13·R18).
+# 신고 뒤 대여가 없으면 수리 대기, 신고 당시 자리에서 다시 대여됐으면 조치 안 됨 추정, 다른 곳에서 대여됐으면 수거·수리 뒤로 본다.
 with st.container(border=True):
     r = in_area(rep) if rep is not None else None
     n = 0 if r is None else len(r)
     waiting = 0 if r is None else int((r.rentals_after == 0).sum())
+    unfixed = 0 if r is None or "same_st_after" not in r else int(r.same_st_after.fillna(False).astype(bool).sum())
     ui.card_title(f"② 최근 {texts.REPORT_DAYS}일 안에 고장 신고된 자전거 — {n:,}대",
-                  sub=f"{area_label} · 이용자가 앱으로 신고한 자전거. 신고되면 대체로 바로 대여가 막히고, 점검·수리 뒤 다시 운행에 들어갑니다. "
-                      f"이 중 <b>{waiting:,}대는 신고 뒤 아직 한 번도 대여되지 않아</b> 수리를 기다리는 것으로 보입니다. 점검 권장 목록(③)에서는 뺐습니다.")
+                  sub=f"{area_label} · 이용자가 앱으로 신고한 자전거. 수거되면 운행에서 빠지지만, 신고 뒤 하루 안에 그 자리에서 다시 대여되는 경우도 30% 정도 있습니다. "
+                      f"이 중 <b>{waiting:,}대는 신고 뒤 아직 한 번도 대여되지 않아</b> 수리를 기다리는 것으로 보이고, "
+                      f"<b>{unfixed:,}대는 신고 당시 자리에서 다시 대여돼</b> 고장 조치가 안 됐을 가능성이 높습니다. 점검 권장 목록(③)에서는 뺐습니다.")
     if n:
         status = st.segmented_control("보기", ["수리 대기로 보임", "다시 운행 중", "전부"], default="수리 대기로 보임", key="rep_status",
-                                      help="수리 대기로 보임 = 신고 뒤 아직 대여 기록이 없음 · 다시 운행 중 = 신고 뒤 다시 대여됨(점검·수리를 마친 것으로 보임)")
+                                      help="수리 대기로 보임 = 신고 뒤 아직 대여 기록이 없음 · 다시 운행 중 = 신고 뒤 다시 대여됨. "
+                                           "다른 대여소로 옮겨진 뒤 대여됐다면 수리를 마친 것으로 보이지만, 그 자리에서 곧바로 다시 대여됐다면 고쳐지지 않았을 수 있습니다")
         v = r[r.rentals_after == 0] if status == "수리 대기로 보임" else (r[r.rentals_after > 0] if status == "다시 운행 중" else r)
-        v = v.sort_values("last_report_ts", ascending=False)          # 최근에 신고된 순
+        same = v.same_st_after.fillna(False).astype(bool) if "same_st_after" in v else pd.Series(False, index=v.index)
+        v = v.assign(조치=np.select([v.rentals_after == 0, same], ["수리 대기로 보임", "신고 뒤 고장 조치 안 됐을 가능성 높음"], "옮겨진 뒤 운행(조치된 것으로 보임)"),
+                     _same=same)
+        v = v.sort_values(["_same", "last_report_ts"], ascending=[False, False])     # 조치 안 됐을 가능성이 높은 자전거를 위로, 그 안에서는 최근 신고 순
         v = v.assign(자전거번호=v.bike_id.map(lambda x: f"SPB-{x:05d}"), 대여소=[ui.station_label(a_, b_) for a_, b_ in zip(v.last_st, v.last_st_name)],
                      대기=((pd.Timestamp.now().value - pd.to_datetime(v.last_report_ts).astype("datetime64[ns]").astype("int64")) / 3.6e12).round(0))
-        cols = ["자전거번호", "last_report_ts", "kinds", "n_reports"] + (["대기"] if status == "수리 대기로 보임" else ["first_rent_after", "rentals_after"]) + ["대여소", "district", "last_rtn_dt"]
+        cols = ["자전거번호", "last_report_ts", "kinds", "n_reports"] + (["대기"] if status == "수리 대기로 보임" else ["조치", "first_rent_after", "rentals_after"]) + ["대여소", "district", "last_rtn_dt"]
         st.dataframe(v[cols], hide_index=True, width="stretch", height=320, column_config={
             "last_report_ts": st.column_config.DatetimeColumn("마지막 신고 시각", format="M/D HH:mm"),
             "kinds": "신고된 부품", "n_reports": st.column_config.NumberColumn("신고 건수", format="%d건"),
+            "조치": st.column_config.TextColumn("신고 뒤 상태(추정)", width="medium",
+                                              help="신고 당시 자리에서 다시 대여됐으면 수거되지 않은 채 운행된 것이라 고장 조치가 안 됐을 가능성이 높습니다(그런 자전거는 다시 신고될 위험이 약 2배). 다른 대여소에서 대여됐으면 수거·수리 뒤 재배치로 봅니다."),
             "대기": st.column_config.NumberColumn("신고 뒤 지난 시간", format="%d시간"),
             "first_rent_after": st.column_config.DatetimeColumn("신고 뒤 처음 대여된 시각", format="M/D HH:mm"),
             "rentals_after": st.column_config.NumberColumn("신고 뒤 대여 횟수", format="%d회"),
@@ -108,22 +117,26 @@ with st.container(border=True):
     part = c1.selectbox("부품", ["전체", "타이어", "체인", "안장", "페달"], help="부품을 고르면 그 부품의 고장 신고 가능성 순으로 정렬합니다")
     grades = c2.pills("등급", texts.GRADE_ORDER[:4], selection_mode="multi", default=["점검 권장", "주의"])
     top = c3.segmented_control("보여 줄 대수", [50, 200, 1000], default=200, format_func=lambda x: f"상위 {x}대")
-    score_col = {"전체": "rate_1000km", "타이어": "rate_tire", "체인": "rate_chain", "안장": "rate_saddle", "페달": "rate_pedal"}[part]
+    score_col = {"전체": "risk_ratio", "타이어": "ratio_tire", "체인": "ratio_chain", "안장": "ratio_saddle", "페달": "ratio_pedal"}[part]
     v = risk_un[risk_un.grade.isin(grades)] if grades else risk_un[risk_un.grade != "산정 제외"]
     v = v.sort_values(score_col, ascending=False).head(top or 200).copy()
     v["자전거번호"] = v.bike_id.map(lambda x: f"SPB-{x:05d}")
     v["등급"] = v.grade.map(ui.grade_badge)
     v["대여소"] = [ui.station_label(a_, b_) for a_, b_ in zip(v.last_st, v.last_st_name)]
-    show = v[["자전거번호", "등급", score_col, "reasons", "km_since_rep", "rep_13w", "sham_2w", "대여소", "district", "last_rtn_dt"]]
+    v["주행"] = v.km_4w / 4
+    v["다음 신고까지"] = [f"약 {k:,.0f}km · {w:.0f}주" if w == w and w < 520 else f"약 {k:,.0f}km" for k, w in zip(v.km_to_report, v.weeks_to_report)]
+    show = v[["자전거번호", "등급", score_col, "주행", "reasons", "다음 신고까지", "km_since_rep", "rep_13w", "sham_2w", "대여소", "district", "last_rtn_dt"]]
     st.dataframe(show, hide_index=True, width="stretch", height=430, column_config={
-        score_col: st.column_config.NumberColumn(f"{'' if part == '전체' else part + ' '}고장 신고 가능성", format="%.1f", help=texts.SCORE_HELP),
+        score_col: st.column_config.NumberColumn(f"{'' if part == '전체' else part + ' '}다음 주 신고 가능성(평균 대비)", format="%.1f배", help=texts.SCORE_HELP),
+        "주행": st.column_config.NumberColumn("주 평균 주행", format="%d km", help="최근 4주 평균"),
+        "다음 신고까지": st.column_config.TextColumn("다음 신고까지(예상)", help=texts.TO_REPORT_HELP),
         "reasons": st.column_config.TextColumn("이렇게 본 이유", width="large"),
         "km_since_rep": st.column_config.NumberColumn("마지막 신고 뒤 달린 거리", format="%d km"),
         "rep_13w": st.column_config.NumberColumn("최근 3개월 신고", format="%d건"),
         "sham_2w": st.column_config.NumberColumn("최근 2주 바로 반납", format="%d회"),
         "대여소": "마지막 반납 대여소", "district": "자치구",
         "last_rtn_dt": st.column_config.DatetimeColumn("마지막 반납 시각", format="M/D HH:mm")})
-    st.download_button("이 목록 내려받기 (CSV)", show.rename(columns={score_col: "고장 신고 가능성", "reasons": "이유", "km_since_rep": "마지막 신고 뒤 달린 거리(km)",
+    st.download_button("이 목록 내려받기 (CSV)", show.rename(columns={score_col: "다음 주 신고 가능성(평균 대비 배)", "주행": "주 평균 주행(km)", "reasons": "이유", "km_since_rep": "마지막 신고 뒤 달린 거리(km)",
                                                                    "rep_13w": "최근 3개월 신고", "sham_2w": "최근 2주 바로 반납", "district": "자치구",
                                                                    "last_rtn_dt": "마지막 반납 시각"}).to_csv(index=False).encode("utf-8-sig"),
                        file_name=f"점검권장_{area_label}_{part}_{date.today():%Y%m%d}.csv", mime="text/csv", icon=":material/download:", key="dl_risk")
@@ -167,7 +180,7 @@ with st.container(border=True):
                 here["자전거번호"] = here.bike_id.map(lambda x: f"SPB-{x:05d}")
                 if is_risk:
                     here["등급"] = here.grade.map(ui.grade_badge)
-                    st.dataframe(here.sort_values("rate_1000km", ascending=False)[["자전거번호", "등급", "reasons", "last_rtn_dt"]], hide_index=True, width="stretch",
+                    st.dataframe(here.sort_values("risk_ratio", ascending=False)[["자전거번호", "등급", "reasons", "last_rtn_dt"]], hide_index=True, width="stretch",
                                  column_config={"reasons": st.column_config.TextColumn("이렇게 본 이유", width="large"),
                                                 "last_rtn_dt": st.column_config.DatetimeColumn("마지막 반납 시각", format="M/D HH:mm")})
                 else:

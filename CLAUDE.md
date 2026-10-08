@@ -80,9 +80,9 @@ from prep import to_utf8, std_name, read_any, data_files, make_utf8_folder
 
 ### 단계 1A (2026-10-05) — 상세와 이유는 `docs/notes/01_데이터전처리_메모.md`
 
-- **고장신고 파일은 마지막 날이 통째로 빠진 것이 6일 있다**(2020-10-31, 2021-01-31, 2021-06-30, 2021-12-31, 2022-06-30, 2022-12-31) → API 실제 값으로 채움(`py/failure_gaps.py`).
+- **고장신고 파일은 마지막 날이 통째로 빠진 것이 6일 있다**(2020-10-31, 2021-01-31, 2021-06-30, 2021-12-31, 2022-06-30, 2022-12-31) → API 실제 값으로 채움(`py/build/failure_gaps.py`).
 - **2015~2017 '대여소별 반납내역'은 읽지 않는다**(대여내역과 연 합계가 같아 2배가 된다). 일별 대여건수 파일에는 쉼표 든 숫자, 끝의 빈 줄이 있다.
-- **이용정보(일별)는 헤더가 제각각이라 열 위치로 읽는다**(`py/use_daily.py`). 구멍(2016년·2022-05 없음, 엑셀 줄 수 한계로 잘린 파일 4개, 2021-01~05 과소)은 대여이력에서 다시 합산해 메운다(`py/rent_history_daily.py`, 564일).
+- **이용정보(일별)는 헤더가 제각각이라 열 위치로 읽는다**(`py/build/use_daily.py`). 구멍(2016년·2022-05 없음, 엑셀 줄 수 한계로 잘린 파일 4개, 2021-01~05 과소)은 대여이력에서 다시 합산해 메운다(`py/build/rent_history_daily.py`, 564일).
 - **이동거리는 2020-03 ~ 2021-01-04에 대부분 0으로 기록돼 복구할 수 없다**(2021-09~2022-03도 13~22%가 0). `dist_ok`(그날 거리 0 비율 10% 미만, 임시 기준)인 날만 `dist_km`에 값이 있다. 이용시간·대여건수는 전 기간 정상.
 - **운영이 멈춘 날**: `no_service` 3일(2017-07-06, 2019-09-07, 2022-08-09)은 신고율 분석에서 뺀다. `partial_service` 10일은 표시만. 운영 없던 날은 보간하지 않는다.
 - **신고율 수준이 계단처럼 바뀐다(레짐)**: 2018-06-20 급등(새 앱 5일 뒤), 2020-05 ~ 2021-03 절반, 2021-04-05~08 2배, 2023-09-07 ~ 10-10 약 −40%(`report_anomaly`), 2025-03부터 약 −20%. 대부분 원인 미확인. 상세 `docs/notes/02_EDA_메모.md`, `notebooks/1A_regime.ipynb`.
@@ -90,12 +90,12 @@ from prep import to_utf8, std_name, read_any, data_files, make_utf8_folder
 - **건당 이용시간이 해마다 다르다**(2020년 29분 → 2023년 이후 20.5분). 대여건수 기준 신고율은 이용시간 기준과 비교해서 본다.
 - **주 단위 신고 건수는 대부분 이용량이 정한다**(변동의 70~85%). 신고율 쪽에서 크게 움직이는 것은 수준 변화, 타이어 계절성(연중 2.4배), 한파(−4℃ 이하 1.33배)뿐이다. 요일 효과(월 1.10, 토 0.87)는 기간이 달라도 같다. 더위·전날 비는 효과가 없거나 작다. 변수 목록은 `docs/variables_v1.md`. 학습에서 `no_service`, `report_anomaly`인 날은 뺀다.
 - **노출은 대여건수(`rentals`)다**(체크포인트 C, 2026-10-05. 단계 0의 "노출 = 이동거리"를 바꿨다): 이용시간·이동거리보다 AIC 약 195 낮고 검증 오차도 작다. 한파 변수는 `cold_wave`와 `winter_anom`을 둘 다 넣는다. 전날 비는 전체로는 효과가 없고 부품별로 갈린다. 부품별로 모형을 따로 맞춘다. 음이항 회귀 함수는 `py/nbreg.py`.
-- **예측(1C)**: 과제는 부품별 앞으로 7일 합계. 코드는 `py/fc.py`(과제·나이브·시나리오·채점), `py/fc_models.py`(음이항·LightGBM·ARIMAX), `py/fc_dl.py`(GRU). `py/fc_expo.py`(대여량 모형: 예보 오차가 섞인 날씨로 학습한 LightGBM), `py/kma_forecast.py`(기상청 과거 예보 → 원점별 앞으로 7일 예보, 시나리오 B. 기준 시나리오), `py/weather_forecast.py`(JMA 예보, 참고). 대여량 모형은 기상청 예보로 학습한 음이항. 예측 모형은 음이항(페달만 예보로 학습한 판)(`output/models/selection.csv`). `make_base()`는 기본으로 테스트 구간 원점을 만들지 않는다. **테스트 구간 예측·채점은 사람이 승인한 뒤 한 번만.** 맥에서는 lightgbm을 torch보다 먼저 import하고 torch 스레드를 1개로 둔다(안 그러면 프로세스가 죽거나 멈춘다).
+- **예측(1C)**: 과제는 부품별 앞으로 7일 합계. 코드는 `py/fc.py`(과제·나이브·시나리오·채점), `py/fc_models.py`(음이항·LightGBM·ARIMAX), `py/fc_dl.py`(GRU). `py/fc_expo.py`(대여량 모형: 예보 오차가 섞인 날씨로 학습한 LightGBM), `py/forecast/kma_forecast.py`(기상청 과거 예보 → 원점별 앞으로 7일 예보, 시나리오 B. 기준 시나리오), `py/forecast/weather_forecast.py`(JMA 예보, 참고). 대여량 모형은 기상청 예보로 학습한 음이항. 예측 모형은 음이항(페달만 예보로 학습한 판)(`output/models/selection.csv`). `make_base()`는 기본으로 테스트 구간 원점을 만들지 않는다. **테스트 구간 예측·채점은 사람이 승인한 뒤 한 번만.** 맥에서는 lightgbm을 torch보다 먼저 import하고 torch 스레드를 1개로 둔다(안 그러면 프로세스가 죽거나 멈춘다).
 - **운영 파이프라인(3A)**: 작업은 `data/db/.ops.lock` 잠금을 쓰므로 동시에 두 개를 돌리지 않는다. 대시보드는 `serving/*.parquet`만 읽는다. 중기예보 API는 2026-10-07 승인돼 수집 중. 주간 부품 예측은 최근 4주 신고율 × 대여량 예측(`py/fc_ops.py`): 예보판(1C S1_B)을 보여 주고 달력판은 대체·병행 기록, 2026-10-12부터 12주 비교(결정 로그 2026-10-08). 신고율 음이항(1C 선택 모형)은 운영에 쓰지 않는다. crontab 등록은 사람이 한다.
-- **위험 모형 테스트는 2026-10-07에 한 번 열었다**(`risk_eval_test.csv`). 다시 돌리지 않는다. 결과를 보고 `risk_spec.json`을 바꾸지 않는다.
+- **위험 모형 테스트는 2026-10-07에 한 번 열었다**(`risk_eval_test.csv`). 다시 돌리지 않는다. 결과를 보고 `risk_spec.json`을 바꾸지 않는다. 점검 등급·순위는 2026-10-08부터 다음 주 신고 확률 기준이고 화면에는 평균 대비 배수만 보여 준다(모형·계수는 그대로).
 - **패널(2A-9)**: `km_next`·`repaired_likely`는 라벨 쪽 정보라 2B 설명변수로 쓰지 않는다. 대여소 군집은 2025-06-30까지로만 만든다. 2B 분할: 학습 2024-01 ~ 2025-06, 검증 2025-07 ~ 12, 테스트 2026-01 ~.
 - **대여이력 적재(2A-1, 2026-10-07)**: `data/db/dareungi.duckdb`는 적재 스크립트가 잠그므로 분석 스크립트는 메모리 DB로 Parquet을 읽는다. 2026년 상세 행 수(1,851만)가 일별 대여건수(1,798만)보다 3% 많다 — 2026년 파일에만 있는 0 ~ 1분 기록 때문으로 보인다.
-- **헛대여(같은 대여소 반납) 기준은 아래쪽을 2분으로 자른다**: 2025년까지 파일에는 2분 미만 같은 대여소 반납이 없고 2026년 파일에만 0 ~ 1분 기록이 있다(`py/day_signal.py`). 2025-03 하락은 헛대여율(−4%)이 아니라 신고(−20%)가 줄어든 것으로 보인다(사후 분석, `docs/notes/04`).
+- **헛대여(같은 대여소 반납) 기준은 아래쪽을 2분으로 자른다**: 2025년까지 파일에는 2분 미만 같은 대여소 반납이 없고 2026년 파일에만 0 ~ 1분 기록이 있다(`py/build/day_signal.py`). 2025-03 하락은 헛대여율(−4%)이 아니라 신고(−20%)가 줄어든 것으로 보인다(사후 분석, `docs/notes/04`).
 - 외부 요인(앱 개편, 민간 앱 대여, 체인가드, 코로나 등)의 날짜·출처는 `data/raw/external/events.csv`, 검토는 `docs/reference/07~10`.
 - 결정 이력: `docs/decision_log.md`
 
@@ -109,25 +109,24 @@ from prep import to_utf8, std_name, read_any, data_files, make_utf8_folder
 | `docs/PROJECT_OVERVIEW.md`, `docs/WORKFLOW_사람-AI_역할분담.md` | 프로젝트 방향, 단계별 역할 분담 |
 | `docs/runbook/00~09` | 단계별 실행 절차. `[결정]` 표시 = 사람이 정함 |
 | `docs/decision_log.md` | 결정과 근거 수치 |
-| `docs/notes/01~06` | 단계별 메모(전처리·EDA·모델 설계·레짐 원인·개체 패널·위험 모형). **처리나 결정이 생기면 갱신한다** |
+| `docs/notes/01~07` | 단계별 메모(전처리·EDA·모델 설계·레짐 원인·개체 패널·위험 모형·강건성). **처리나 결정이 생기면 갱신한다** |
 | `docs/report_stage1.md`, `docs/risk_model_card.md`, `docs/proposal/proposal_draft.md` | 단계 1 보고서 초안, 위험 모형 카드, 서울시 제안 초안 |
 | `docs/pipeline.md`, `docs/panel_dictionary.md`, `docs/load_log.csv` | 운영 파이프라인 작업표·스케줄·복구, 패널 변수 사전, 대여이력 적재 기록 |
 | `docs/phase0_result.md`, `docs/schema_map.csv` | 단계 0 결과, 열 이름 대응표 |
 | `docs/reference/01~10`, `04b`, `08a` | 1차 분석 검토·조사 자료, 레짐 원인 분석 계획(04b), 대시보드 화면 설계(08a, 08 문서와 다르면 이것을 따른다) |
 
-**코드 (`py/`)**
+**코드 (`py/`)** — 바로 아래는 다른 코드·노트북이 불러 쓰는 공용 모듈, 하위 폴더는 직접 실행하는 단계별 스크립트
 
 | 경로 | 내용 |
 |---|---|
-| `prep.py`, `seoul_api.py` | 인코딩·파일 읽기, 서울 열린데이터 API |
-| `use_daily.py`, `rent_history_daily.py`, `bike_month.py`, `failure_gaps.py` | 1A: 원본을 날짜별·자전거별로 합산, 고장신고 빠진 날 API 수집 |
-| `nbreg.py` | 1B: 음이항 회귀 |
-| `fc.py`, `fc_models.py`, `fc_dl.py`, `fc_expo.py`, `kma_forecast.py`, `weather_forecast.py`, `fc_posthoc.py`, `report_figs.py` | 1C: 예측 과제·모형·대여량 모형·기상청 예보 정리(JMA는 참고)·부록 B 사후 분석·보고서 그림 |
-| `day_signal.py`, `rc_*.py` | 04b 레짐 원인 사후 분석. 결과는 `docs/notes/04` |
-| `db.py`, `21_rent_to_parquet.py` ~ `29_panel.py`, `panel_sql.py` | 2A: 대여이력 적재 → 정제 → 대여소·고도 → 날씨 → 군집 → 통행 테이블 → 신고 결합 → 자전거×주 패널. **같은 원본을 두 번 적재하면 중복** |
-| `risk_eval.py`, `risk_lgb.py`, `risk_interpret.py`, `risk_alert.py`, `risk_freeze.py` | 2B: 평가·베이스라인, LightGBM 포아송 + km offset, 해석 모형, 헛대여 경보 검증, 설정 고정·테스트(`--test`는 **사람 승인 뒤 한 번만**) |
-| `fc_ops.py`, `fc_ops_fit.py`, `holidays.py` | 3A 주간 부품 예측(신고율 × 대여량 예측, 예보판·달력판), 대여량 모형 고정·재현 확인, 공휴일 표 받기 |
-| `common.py`, `jobs/*.py` | 3A 운영 파이프라인: 수집(대여이력·고장신고·날씨·대여소), 경보, 매일(`daily.py`, 실적은 `actuals.py`)·매주(`weekly.py`) 갱신, 스냅샷 발행(`serving/`). 운영 DB `data/db/ops.duckdb` |
+| `prep.py`, `seoul_api.py`, `db.py`, `common.py` | 인코딩·파일 읽기, 서울 열린데이터 API, 분석 DB 연결, 운영 공통(운영 DB·API·경보·잠금) |
+| `nbreg.py`, `fc.py`, `fc_models.py`, `fc_dl.py`, `fc_expo.py`, `fc_ops.py`, `panel_sql.py` | 공용 모듈: 음이항 회귀(1B), 1C 예측 과제·모형·GRU·대여량 모형, 운영 주간 예측(예보판·달력판), 패널 SQL(분석·운영 같이) |
+| `build/` | 1A: 원본을 날짜별·자전거별로 합산(`use_daily`, `rent_history_daily`, `bike_month`), 고장신고 빠진 날 API 수집(`failure_gaps`), 일별 신호(`day_signal`), 공휴일 표 받기(`holidays`) |
+| `panel/` | 2A: `21_rent_to_parquet` ~ `29_panel` 대여이력 적재 → 정제 → 대여소·고도 → 날씨 → 군집 → 통행 테이블 → 신고 결합 → 자전거×주 패널. **같은 원본을 두 번 적재하면 중복** |
+| `forecast/` | 1C·운영 예측: 기상청 과거 예보 정리(`kma_forecast`, JMA는 참고 `weather_forecast`), 부록 B 사후 분석(`fc_posthoc`), 보고서 그림(`report_figs`), 운영 대여량 모형 고정·재현(`fc_ops_fit`), 테스트 뒤 주 비교(`fc_ops_compare`), 강건성 점검(`robustness`, `docs/notes/07`) |
+| `risk/` | 2B: 평가·베이스라인(`risk_eval`), LightGBM 포아송 + km offset(`risk_lgb`), 해석 모형, 헛대여 경보 검증, 순위 안정성(`risk_stability`), 설정 고정·테스트(`risk_freeze --test`는 **사람 승인 뒤 한 번만**) |
+| `regime/` | 04b 레짐 원인 사후 분석(`rc_*`). 결과는 `docs/notes/04` |
+| `jobs/` | 3A 운영 파이프라인: 수집(대여이력·고장신고·날씨·대여소), 경보, 매일(`daily`, 실적은 `actuals`)·매주(`weekly`) 갱신, 스냅샷 발행(`serving/`). 운영 DB `data/db/ops.duckdb` |
 
 **앱·배포·노트북·데이터**
 

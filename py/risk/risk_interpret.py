@@ -13,7 +13,7 @@ H5 재배치 +(안장·페달), H6 수리 뒤 −, H7 나이 +.
 
 입력: data/processed/panel/bike_week.parquet (테스트 행 제외)
 출력: output/tables/risk_irr_nb.csv (음이항 IRR, 전체·부품별), risk_hr_cox.csv (Cox HR)
-실행: .venv/bin/python py/risk_interpret.py  (3~5분)
+실행: .venv/bin/python py/risk/risk_interpret.py  (3~5분)
 """
 import sys
 import warnings
@@ -26,12 +26,12 @@ import statsmodels.formula.api as smf
 from scipy.optimize import minimize_scalar
 from lifelines import CoxPHFitter
 
-sys.path.append(str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parents[1]))   # py/ 공용 모듈
 from risk_eval import load_panel   # noqa: E402
 from risk_lgb import prep          # noqa: E402
 
 warnings.filterwarnings("ignore")
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 N_BIKES = 5000
 Z = ["climb_per_km", "descent_per_km", "reloc_per_trip"]                       # 표준화해 1 표준편차당 효과로 읽는 변수
 RHS = ("np.log1p(km_since_rep) + z_climb_per_km + z_descent_per_km + sh_rain + sh_wet + sh_commute + sh_leisure"

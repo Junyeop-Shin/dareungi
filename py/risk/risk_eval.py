@@ -12,14 +12,14 @@ load_panel()은 기본으로 테스트 행을 빼고 돌려준다. 테스트 채
 
 입력: data/processed/panel/bike_week.parquet
 출력: output/tables/risk_eval_valid.csv (베이스라인 행. risk_lgb.py가 모형 행을 더한다), risk_split_info.csv
-실행: .venv/bin/python py/risk_eval.py
+실행: .venv/bin/python py/risk/risk_eval.py
 """
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SPLITS = {"train": ("2024-01-01", "2025-06-30"), "valid": ("2025-07-01", "2025-12-31"), "test": ("2026-01-01", "2026-12-31")}
 KS = (500, 1000, 2000)
 

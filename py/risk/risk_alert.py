@@ -9,17 +9,17 @@
 
 입력: DuckDB trips_seq, fail
 출력: output/tables/risk_alert_valid.csv (기준별 경보 수, 적중률, 선행 시간, 기준선 대비 배수), risk_alert_by_year.csv
-실행: .venv/bin/python py/risk_alert.py  (1~2분)
+실행: .venv/bin/python py/risk/risk_alert.py  (1~2분)
 """
 import sys
 from pathlib import Path
 
 import pandas as pd
 
-sys.path.append(str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parents[1]))   # py/ 공용 모듈
 from db import connect   # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def alerts(con, sham_col, k):

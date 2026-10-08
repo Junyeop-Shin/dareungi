@@ -13,49 +13,82 @@ import streamlit as st
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from common import data, theme, texts            # noqa: E402
-from common.seoul_tiles import DISTRICTS, SEOUL_TILES   # noqa: E402
+from common.seoul_tiles import DISTRICTS, SECTORS, SEOUL_TILES   # noqa: E402
 
-QUICK_GU = ["강남구", "송파구", "마포구"]       # 머리 영역에 버튼으로 바로 보이는 자치구. 나머지는 '구 선택'에서
 CONF_HIGH, CONF_MID = 0.20, 0.0                # 예측 정확도 등급 기준: '지난주와 같다'(나이브) 대비 오차 개선율(08a 9절)
 CONF_ICON = {"높음": "✅", "보통": "⚠️", "낮음": "⛔"}
 BADGE = {"점검 권장": ("g-insp", "⚠"), "주의": ("g-warn", "ⓘ"), "보통": ("g-norm", "•"), "낮음": ("g-low", "·"), "이용 적음": ("g-low", "–")}
 
 
 # ── 자치구 필터 ───────────────────────────────────────────
-# 버튼은 '서울 전체'와 자주 쓰는 3개 구만 두고, 나머지는 '구 선택' 팝오버에서 고른다.
-# 고른 구가 많아도 버튼이 늘어나지 않도록 고른 구 이름은 버튼 아래 한 줄로 보여 준다.
-def _pills_changed():
-    sel = [g for g in (st.session_state.get("gu_pills") or []) if g != "서울 전체"]
-    prev = data.get_gu()
-    if "서울 전체" in (st.session_state.get("gu_pills") or []) and prev:
-        gus = []                                                      # 구를 고른 상태에서 '서울 전체'를 누르면 초기화
-    else:
-        gus = sel + [g for g in prev if g not in QUICK_GU]            # 팝오버에서 고른 다른 구는 유지
-    data.set_gu(gus)
-    st.session_state["gu_more"] = gus
+# 서울 전체 / 강북 / 강남을 먼저 고르고, 구는 '구 선택' 팝오버에서 고른다.
+# 강북·강남을 누르면 그 권역의 구가 모두 선택된 상태로 시작하고, 하나씩 빼거나 '모두 비우기' 뒤 다시 고를 수 있다.
+# 권역 구분은 seoul_tiles.SECTORS(한강 기준 임시 구분)를 쓴다.
+SCOPES = ["서울 전체", "강북", "강남"]
 
 
-def _more_changed():
-    data.set_gu(st.session_state.get("gu_more") or [])
+def _pool(scope):
+    return DISTRICTS if scope == "서울 전체" else SECTORS[scope]
+
+
+def _scope_changed():
+    sc = st.session_state.get("gu_scope")
+    if not sc:                                   # 이미 고른 버튼을 다시 누르면 선택이 풀리는데, 그때는 그대로 둔다
+        return
+    data.set_region(sc, [] if sc == "서울 전체" else SECTORS[sc])
+
+
+def _sel_changed():
+    data.set_region(data.get_scope(), st.session_state.get("gu_sel") or [])
+
+
+def _clear():
+    data.set_region(data.get_scope(), [])
+
+
+def _select_all():
+    sc = data.get_scope()
+    data.set_region(sc, [] if sc == "서울 전체" else SECTORS[sc])
 
 
 def gu_filter():
-    gus = data.get_gu()
-    st.session_state["gu_pills"] = [g for g in gus if g in QUICK_GU] or ([] if gus else ["서울 전체"])
-    st.session_state["gu_more"] = gus
-    a, b = st.columns([3.2, 1.3], vertical_alignment="center")
+    sc, sel = data.get_scope(), data.get_selected()
+    st.session_state["gu_scope"] = sc
+    st.session_state["gu_sel"] = [g for g in sel if g in _pool(sc)]
+    a, b = st.columns([2.3, 1.3], vertical_alignment="center")
     with a:
-        st.pills("자치구", ["서울 전체"] + QUICK_GU, selection_mode="multi", key="gu_pills", on_change=_pills_changed, label_visibility="collapsed")
+        st.segmented_control("권역", SCOPES, key="gu_scope", on_change=_scope_changed, label_visibility="collapsed")
     with b:
-        with st.popover(f"구 선택 · {len(gus)}곳" if gus else "구 선택", icon=":material/tune:", use_container_width=True):
-            st.multiselect("볼 자치구(여러 개 가능, 비우면 서울 전체)", DISTRICTS, key="gu_more", on_change=_more_changed, placeholder="자치구 이름")
-    if gus:
-        st.markdown(f'<div class="gu-picked">보는 지역: {", ".join(gus)}</div>', unsafe_allow_html=True)
+        n = len(st.session_state["gu_sel"])
+        label = f"구 선택 · {n}곳" if n and not (sc != "서울 전체" and n == len(SECTORS[sc])) else ("구 선택" if sc == "서울 전체" else f"구 선택 · {sc} 전체")
+        with st.popover(label, icon=":material/tune:", use_container_width=True):
+            hint = "아무것도 안 고르면 서울 전체" if sc == "서울 전체" else f"아무것도 안 고르면 {sc} 전체"
+            # 목록을 늘 펼쳐 두려고 multiselect 대신 pills를 쓴다. 다 비워도 구 이름이 그대로 보여 다시 고르기 쉽다
+            st.pills(f"{sc} 자치구 ({hint})", _pool(sc), selection_mode="multi", key="gu_sel", on_change=_sel_changed)
+            st.button("모두 비우기", on_click=_clear, use_container_width=True, disabled=not n, icon=":material/remove_done:")
+            if sc != "서울 전체":
+                st.button(f"{sc} 모두 선택", on_click=_select_all, use_container_width=True, disabled=n == len(SECTORS[sc]), icon=":material/done_all:")
+    st.markdown(f'<div class="gu-picked">보는 지역: {scope_label()}</div>', unsafe_allow_html=True)
+
+
+def week_so_far(monday):
+    """이번 주 월요일부터 어제까지 실제 신고(서울 전체, 부품별). 반환: ({부품: 건수}, 마지막 날짜) 또는 (None, None)"""
+    dr = data.load("daily_reports")
+    if dr is None or dr.empty:
+        return None, None
+    d = dr[pd.to_datetime(dr.date) >= pd.Timestamp(monday)]
+    if d.empty:
+        return None, None
+    return d.groupby("part").reports.sum().to_dict(), pd.to_datetime(d.date).max()
 
 
 def scope_label():
-    gus = data.get_gu()
-    return "서울 전체" if not gus else (", ".join(gus) if len(gus) <= 3 else f"{gus[0]} 외 {len(gus) - 1}곳")
+    sc, gus = data.get_scope(), data.get_gu()
+    if not gus:
+        return "서울 전체"
+    if sc != "서울 전체" and sorted(gus) == sorted(SECTORS[sc]):
+        return f"{sc} 전체 ({len(gus)}개 구)"
+    return ", ".join(gus) if len(gus) <= 3 else f"{gus[0]} 외 {len(gus) - 1}곳"
 
 
 # ── 머리 영역 ─────────────────────────────────────────────
@@ -101,11 +134,12 @@ PAGE_URL = {"views/parts_forecast.py": "parts_forecast", "views/inspection.py": 
 
 def card_title(title, page=None, link="자세히", sub=None):
     """카드 제목(왼쪽)과 이동 링크(오른쪽 끝)를 한 줄에 두고, 그 아래 무엇을 세는지 한 줄(sub)을 붙인다.
-    링크를 HTML로 직접 그려야 오른쪽 끝에 정확히 붙는다. 고른 자치구는 주소(?gu=)에 실어 다음 화면으로 넘긴다."""
+    링크를 HTML로 직접 그려야 오른쪽 끝에 정확히 붙는다. 고른 권역·자치구는 주소(?scope=, ?gu=)에 실어 다음 화면으로 넘긴다."""
     href = ""
     if page:
         from urllib.parse import urlencode
-        q = urlencode({"gu": data.get_gu()}, doseq=True)
+        sc = data.get_scope()
+        q = urlencode({**({"scope": sc} if sc != "서울 전체" else {}), "gu": data.get_selected()}, doseq=True)
         href = f'<a class="card-link" href="./{PAGE_URL.get(page, "")}{"?" + q if q else ""}" target="_self">{link} →</a>'
     st.markdown(f'<div class="card-head"><span class="card-title">{title}</span>{href}</div>', unsafe_allow_html=True)
     if sub:
@@ -155,8 +189,10 @@ def bike_rows(df, n=5):
         where = station_label(getattr(r, "last_st", None), getattr(r, "last_st_name", None))
         gu = getattr(r, "district", None)
         loc = f"마지막 반납 {where} · {gu}" if isinstance(gu, str) else "마지막 반납 위치 확인 안 됨"
+        ratio = getattr(r, "risk_ratio", None)
+        score = f'<div class="loc">평균의 {ratio:.1f}배<br>주 {r.km_4w / 4:.0f}km 주행</div>' if ratio is not None and ratio == ratio else ""
         rows.append(f'<div class="bike-row"><div><div class="mono">SPB-{r.bike_id:05d}</div><div class="loc">{loc}</div></div>'
-                    f'{grade_badge_html(r.grade)}<span class="reason" title="{reason}">{reason}</span></div>')
+                    f'<div>{grade_badge_html(r.grade)}{score}</div><span class="reason" title="{reason}">{reason}</span></div>')
     st.markdown("".join(rows), unsafe_allow_html=True)
 
 
@@ -172,7 +208,7 @@ def tilemap(counts, what="점검 권장 자전거 수"):
             g = pos.get((r, c))
             if not g:
                 cells.append('<div></div>'); continue
-            v = counts.get(g, 0)
+            v = int(round(counts.get(g, 0)))
             p = theme.P()
             bg, fg = (p["primary_light"], "#0F4F3E") if v <= q1 else ((p["primary_mid"], "#0B2E24") if v <= q2 else (p["primary_dark"], "#FFFFFF"))
             name = g[:-1] if g.endswith("구") and len(g) > 2 else g

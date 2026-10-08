@@ -3,7 +3,7 @@
 대여량 예측은 두 가지를 같이 낸다.
   kma  예보 대여량. 1C의 K2(기상청 예보로 학습한 음이항, 달력 + 날씨). 화면에 보여 주는 쪽
   cal  달력 대여량. 1C의 시나리오 D(날씨 없는 음이항, 달력만). 예보가 빠진 주에 대신 쓰고, 매주 같이 기록해 비교한다
-둘 다 1C 테스트 때처럼 2021-04-08 ~ 2024-12-31로 맞춰 계수를 output/models/expo_ops.json에 고정한다(py/fc_ops_fit.py).
+둘 다 1C 테스트 때처럼 2021-04-08 ~ 2024-12-31로 맞춰 계수를 output/models/expo_ops.json에 고정한다(py/forecast/fc_ops_fit.py).
 예측은 그 계수로 직접 계산한다(GLMModel.predict와 같은 값인지 fc_ops_fit.py가 확인한다).
 
 신고율(lvl)과 대여 수준(expo_lvl)은 날짜마다 7일 전에서 끊은 28일 값이라 원점 t에서 t+6까지 모두 계산할 수 있다.
@@ -31,7 +31,7 @@ PARTS = {"fail_tire": "타이어", "fail_chain": "체인", "fail_saddle": "안�
 MODEL_FILE = ROOT / "output/models/expo_ops.json"
 SPEC_FILE = ROOT / "output/models/fc_ops_spec.json"
 CALIB_FILE = ROOT / "output/models/kma_calibration.json"
-HOLIDAYS = ROOT / "data/raw/calendar"        # holidays_2016_2026.csv(1A) + holidays_<연도>.csv(py/holidays.py)
+HOLIDAYS = ROOT / "data/raw/calendar"        # holidays_2016_2026.csv(1A) + holidays_<연도>.csv(py/build/holidays.py)
 LEVEL_FROM = "2021-04-08"        # 이전은 신고 수준이 다른 레짐이라 신고율 계산에서 뺀다(fc.load_master와 같음)
 METHODS = {"kma": "예보 대여량", "cal": "달력 대여량"}
 WX = ["tavg", "tmax", "tmin", "rain_mm", "rain_any", "snow_cm"]
@@ -76,12 +76,13 @@ def calendar(start, end, coef, holidays=None):
 # 신고율·대여 수준
 # ---------------------------------------------------------------------------
 
-def levels(d, bad=None, no_service=None, until=None):
+def levels(d, bad=None, no_service=None, until=None, window=28):
     """날짜별 expo_lvl(34 ~ 7일 전 28일 평균 대여), expo_lvl7(13 ~ 7일 전 평균), lvl_<부품>(같은 28일 신고 / 대여).
 
     d          : 날짜 인덱스, 열 rentals와 PARTS의 열(fail_tire … total_faults)
     bad        : 신고율 계산에서 뺄 날(운영 중단, 신고 누락). no_service: 대여 수준에서 뺄 날
     until      : 이 날짜까지 인덱스를 늘린다(미래 7일 행). 값이 7일 전에서 끊기므로 t+6까지 계산된다
+    window     : 신고율 창(일). 운영은 28. 다른 값은 강건성 점검용(py/forecast/robustness.py)
     """
     d = d.sort_index()
     if until is not None and pd.Timestamp(until) > d.index.max():
@@ -93,9 +94,9 @@ def levels(d, bad=None, no_service=None, until=None):
     out["expo_lvl"] = r.rolling(28, min_periods=14).mean().shift(7)
     out["expo_lvl7"] = r.rolling(7, min_periods=4).mean().shift(7)
     ok = (bad == 0) & (d.index >= LEVEL_FROM)
-    den = d.rentals.where(ok).rolling(28, min_periods=14).sum().shift(7)
+    den = d.rentals.where(ok).rolling(window, min_periods=window // 2).sum().shift(7)
     for p in PARTS:
-        out["lvl_" + p] = d[p].where(ok).rolling(28, min_periods=14).sum().shift(7) / den
+        out["lvl_" + p] = d[p].where(ok).rolling(window, min_periods=window // 2).sum().shift(7) / den
     return out
 
 

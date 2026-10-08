@@ -46,16 +46,40 @@ def stale_items(st_):
     return out
 
 
-def get_gu():
-    """고른 자치구 목록. 처음엔 주소(?gu=)에서 읽고 이후엔 session_state를 쓴다. 빈 목록이면 서울 전체."""
+def get_scope():
+    """보는 권역: '서울 전체', '강북', '강남'. 처음엔 주소(?scope=)에서 읽는다."""
+    if "gu_scope_v" not in st.session_state:
+        q = st.query_params.get("scope", "서울 전체")
+        st.session_state["gu_scope_v"] = q if q in ("서울 전체", "강북", "강남") else "서울 전체"
+    return st.session_state["gu_scope_v"]
+
+
+def get_selected():
+    """권역 안에서 고른 자치구(빈 목록 = 아무것도 안 고름). 처음엔 주소(?gu=)에서 읽는다."""
     if "gu" not in st.session_state:
+        from common.seoul_tiles import SECTORS
         q = st.query_params.get_all("gu") if hasattr(st.query_params, "get_all") else []
-        st.session_state["gu"] = [g for g in q if g]
+        scope = get_scope()
+        # 주소에 권역만 있으면 버튼으로 권역을 눌렀을 때처럼 그 권역의 구를 모두 고른 상태로 시작한다
+        st.session_state["gu"] = [g for g in q if g] or ([] if scope == "서울 전체" else list(SECTORS[scope]))
     return st.session_state["gu"]
 
 
-def set_gu(gus):
+def get_gu():
+    """실제로 거르는 자치구 목록. 빈 목록이면 서울 전체.
+    강북·강남에서 구를 다 비우면 그 권역 전체로 본다(다 빼고 다시 고르는 중에도 화면이 비지 않게)."""
+    from common.seoul_tiles import SECTORS
+    scope, sel = get_scope(), get_selected()
+    return sel if sel or scope == "서울 전체" else list(SECTORS[scope])
+
+
+def set_region(scope, gus):
+    st.session_state["gu_scope_v"] = scope
     st.session_state["gu"] = list(gus)
+    if scope != "서울 전체":
+        st.query_params["scope"] = scope
+    elif "scope" in st.query_params:
+        del st.query_params["scope"]
     if gus:
         st.query_params["gu"] = list(gus)
     elif "gu" in st.query_params:

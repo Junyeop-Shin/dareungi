@@ -15,7 +15,7 @@
 출력: output/models/risk_{all,tire,chain,saddle,pedal}.txt, risk_spec_valid.json,
       output/tables/risk_eval_valid.csv(모형 행 추가), risk_grid_all.csv, risk_shap_valid.csv(변수별 평균 |기여|),
       risk_calibration_valid.csv(10분위 보정)
-실행: .venv/bin/python py/risk_lgb.py  (10~20분)
+실행: .venv/bin/python py/risk/risk_lgb.py  (10~20분)
 """
 import json
 import sys
@@ -25,10 +25,10 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
-sys.path.append(str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parents[1]))   # py/ 공용 모듈
 from risk_eval import BASELINES, evaluate, load_panel   # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 FEATS = [
     "km", "n_trips", "minutes", "speed_med", "speed_sd",                                   # 이번 주 이용
     "sh_commute", "sh_leisure", "sh_round", "sh_rain", "sh_wet", "sh_hot", "sh_cold",       # 어떻게 탔나

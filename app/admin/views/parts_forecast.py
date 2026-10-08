@@ -22,7 +22,8 @@ st.markdown(f'<div class="card-caption">{texts.LABEL_NOTE}</div>', unsafe_allow_
 st.write("")
 PARTS5 = texts.PARTS + ["전체"]
 fc, tr, wa, dr = data.load("forecast_weekly"), data.load("forecast_track"), data.load("weekly_actual"), data.load("daily_reports")
-has_fc = fc is not None and not fc.empty and fc.pred.notna().any()
+fc = fc[fc.pred.notna()] if fc is not None and len(fc) else fc
+has_fc = fc is not None and not fc.empty
 latest = fc[fc.issue_date == fc.issue_date.max()].set_index("part").reindex(PARTS5) if has_fc else None
 period = texts.week_range(fc.issue_date.max()) if has_fc else ""
 wk, last_actual = None, {}
@@ -34,20 +35,23 @@ gu_note = f" · 신고 기록은 {ui.scope_label()}, 예측은 서울 전체" if
 
 # 1. 요약 카드
 if has_fc:
-    st.markdown(f'<div class="card-title">다음 7일({period}) 예상 고장 신고 건수</div>'
+    so_far, upto = ui.week_so_far(fc.issue_date.max())
+    st.markdown(f'<div class="card-title">이번 주({period}) 예상 고장 신고 건수</div>'
                 f'<div class="card-sub">{pd.to_datetime(fc.issue_date.max()):%-m월 %-d일} 발행 · 서울 전체{gu_note}</div>', unsafe_allow_html=True)
     for c, q in zip(st.columns(5), PARTS5):
         r = latest.loc[q]
         d = f"<br>지난주 실제 {last_actual[q]:,.0f}건" if q in last_actual and not data.get_gu() else ""
+        if so_far and not data.get_gu():
+            d += f"<br>이번 주 {upto:%-m/%-d}까지 {so_far.get(q, 0):,.0f}건"
         with c:
             with st.container(border=True):
                 ui.kpi(q, f"{r.pred:,.0f}건", f"범위 {r.lo80:,.0f}~{r.hi80:,.0f}건{d}", help=texts.RANGE_HELP)
 else:
-    ui.empty("매주 월요일 아침에 다음 7일 예측이 나옵니다.")
+    ui.empty("매주 월요일 아침에 이번 주 예측이 나옵니다.")
 
 # 2. 부품별 주별 신고
 with st.container(border=True):
-    ui.card_title("부품별 주별 고장 신고 건수 (최근 26주)", sub="부품을 고르면 그 부품의 실제 신고, 그때 예상한 건수, 다음 7일 예상을 함께 봅니다")
+    ui.card_title("부품별 주별 고장 신고 건수 (최근 26주)", sub="부품을 고르면 그 부품의 실제 신고, 그때 예상한 건수, 이번 주 예상을 함께 봅니다")
     part = st.pills("부품", PARTS5, default="전체", key="trend_part", label_visibility="collapsed") or "전체"
     if wk is not None and len(wk):
         col = "reports" if part == "전체" else part
@@ -64,8 +68,8 @@ with st.container(border=True):
             r = latest.loc[part]; nx = data.shift_days(s.index.max(), 7)
             fig.add_shape(type="rect", x0=data.shift_days(nx, -3), x1=data.shift_days(nx, 3), y0=r.lo80, y1=r.hi80,
                           fillcolor=p["primary_dark"], opacity=0.35, line_width=0)
-            fig.add_scatter(x=[nx], y=[r.pred], mode="markers", name="다음 7일 예상", marker=dict(color=p["primary_mid"], size=10),
-                            hovertemplate=f"다음 7일 예상 {r.pred:,.0f}건 (범위 {r.lo80:,.0f}~{r.hi80:,.0f})<extra></extra>")
+            fig.add_scatter(x=[nx], y=[r.pred], mode="markers", name="이번 주 예상", marker=dict(color=p["primary_mid"], size=10),
+                            hovertemplate=f"이번 주 예상 {r.pred:,.0f}건 (범위 {r.lo80:,.0f}~{r.hi80:,.0f})<extra></extra>")
         fig.update_layout(height=300, xaxis=dict(tickformat="%-m월", dtick="M1", showgrid=False), yaxis=dict(tickformat=","), legend=dict(y=-0.15))
         st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
     else:
@@ -73,7 +77,7 @@ with st.container(border=True):
 
 # 3. 준비 수량
 with st.container(border=True):
-    ui.card_title("다음 7일 부품 준비 수량", sub=f"{period} 동안의 예상 고장 신고 건수와, 부족하지 않으려면 준비해 둘 수량" if has_fc else None)
+    ui.card_title("이번 주 부품 준비 수량", sub=f"{period} 동안의 예상 고장 신고 건수와, 부족하지 않으려면 준비해 둘 수량" if has_fc else None)
     if has_fc:
         fmt = lambda v: "—" if pd.isna(v) else f"{v:,.0f}건"            # 카드와 같은 반올림·쉼표
         tab = pd.DataFrame({"부품": PARTS5, "예상 신고": [fmt(v) for v in latest.pred],
@@ -146,7 +150,7 @@ with st.container(border=True):
                                     hovertemplate="%{x} 주 '지난주와 같다'의 차이 %{y:.0f}%<extra></extra>")])
             fig.update_layout(height=220, barmode="group", yaxis=dict(ticksuffix="%"), legend=dict(y=-0.2))
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-        st.markdown('<div class="card-caption">예측 방법: 최근 4주 동안 대여 1건당 신고 비율 × 앞으로 7일 예상 대여 건수(요일·공휴일·기상청 예보로 계산). 예보를 받지 못한 주는 요일·공휴일만으로 계산합니다. 지난 주들은 그 시점까지의 기록과 그때 나온 예보로 다시 계산했습니다.</div>',
+        st.markdown('<div class="card-caption">예측 방법: 최근 4주 동안 대여 1건당 신고 비율 × 이번 주 예상 대여 건수(요일·공휴일·기상청 예보로 계산). 예보를 받지 못한 주는 요일·공휴일만으로 계산합니다. 지난 주들은 그 시점까지의 기록과 그때 나온 예보로 다시 계산했습니다.</div>',
                     unsafe_allow_html=True)
     else:
         ui.empty("예측 기록이 2주 이상 쌓이면 보여 드립니다.")
