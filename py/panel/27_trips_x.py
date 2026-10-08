@@ -15,17 +15,17 @@ commute와 leisure가 둘 다 참이다.
 
 입력: DuckDB trips, od, station, wx_h
 출력: DuckDB holidays, trips_x, trips_seq, output/tables/panel_2a7_checks.csv
-실행: .venv/bin/python py/27_trips_x.py  (5~15분. 창 함수는 연도로 나누지 않아도 메모리 8GB에서 돌았다)
+실행: .venv/bin/python py/panel/27_trips_x.py  (5~15분. 창 함수는 연도로 나누지 않아도 메모리 8GB에서 돌았다)
 """
 import sys
 from pathlib import Path
 
 import pandas as pd
 
-sys.path.append(str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parents[1]))   # py/ 공용 모듈
 from db import connect   # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def main():

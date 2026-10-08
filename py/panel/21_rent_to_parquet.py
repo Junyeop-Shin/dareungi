@@ -12,8 +12,8 @@
 입력: data/raw/rent_history/서울특별시 공공자전거 대여이력 정보_<연도>.zip (2015~2025), ..._26MM.csv (2026)
       cp949, 17열(2026년은 자전거구분이 없는 16열), 날짜 'YYYY-MM-DD HH:MM:SS'
 출력: DuckDB bike_year, data/processed/rent/y=…/m=…/*.parquet, data/processed/rent_2021/…, docs/load_log.csv
-실행: .venv/bin/python py/21_rent_to_parquet.py            (월 파일당 1~3분 × 약 130개, 몇 시간 걸린다)
-      .venv/bin/python py/21_rent_to_parquet.py 1509 1510  (지정한 달만)
+실행: .venv/bin/python py/panel/21_rent_to_parquet.py            (월 파일당 1~3분 × 약 130개, 몇 시간 걸린다)
+      .venv/bin/python py/panel/21_rent_to_parquet.py 1509 1510  (지정한 달만)
 """
 import csv
 import shutil
@@ -21,11 +21,11 @@ import sys
 import zipfile
 from pathlib import Path
 
-sys.path.append(str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parents[1]))   # py/ 공용 모듈
 from db import connect          # noqa: E402
 from prep import to_utf8        # noqa: E402
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 RAW = ROOT / "data/raw/rent_history"
 LOG = ROOT / "docs/load_log.csv"
 FMT = "['%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M']"       # 대여·반납일시 형식(단계 0에서 확인)

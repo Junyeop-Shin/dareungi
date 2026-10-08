@@ -14,8 +14,8 @@ trips의 대여·반납 대여소번호 중 좌표를 못 찾는 비율을 재�
 
 입력: 서울 API(.env의 SEOUL_API_KEY), DuckDB trips
 출력: data/interim/station_master.csv, DuckDB station, output/tables/panel_2a3_station_checks.csv
-실행: .venv/bin/python py/23_station.py            (API 수집, 커버리지 확인, 고도)
-      .venv/bin/python py/23_station.py --no-elev  (고도 생략)
+실행: .venv/bin/python py/panel/23_station.py            (API 수집, 커버리지 확인, 고도)
+      .venv/bin/python py/panel/23_station.py --no-elev  (고도 생략)
 """
 import sys
 import time
@@ -24,11 +24,11 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-sys.path.append(str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parents[1]))   # py/ 공용 모듈
 from db import connect              # noqa: E402
 from seoul_api import seoul_all     # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "data/interim/station_master.csv"
 
 

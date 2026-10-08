@@ -14,7 +14,7 @@
 
 입력: data/processed/daily_master_v2.parquet
 출력: output/tables/rc_1_changepoints.csv, output/figures/rc_1_yoy.png
-실행: .venv/bin/python py/rc_changepoint.py
+실행: .venv/bin/python py/regime/rc_changepoint.py
 """
 from pathlib import Path
 
@@ -27,7 +27,7 @@ import ruptures as rpt
 
 plt.rcParams["font.family"] = "AppleGothic"
 plt.rcParams["axes.unicode_minus"] = False
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 PARTS = {"fail_tire": "타이어", "fail_chain": "체인", "fail_saddle": "안장", "fail_pedal": "페달", "total_faults": "전체"}
 WINDOWS = {"2021-04 급증": ("2020-07-01", "2022-06-30"), "2025-03 하락": ("2024-01-01", "2026-06-30"),
            "검증용 2018-06 앱 개편": ("2017-07-01", "2019-06-30")}

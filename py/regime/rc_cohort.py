@@ -17,17 +17,17 @@
       output/tables/rc_7_cohort_ratio.csv  전년 같은 반기 대비 비
       output/tables/rc_7_scrap_rule.csv    폐기 기준 도달 여부별 신고율
       output/tables/rc_7_cohort_exit.csv   코호트별 마지막 등장(폐기 추정)
-실행: .venv/bin/python py/rc_cohort.py  (1~2분)
+실행: .venv/bin/python py/regime/rc_cohort.py  (1~2분)
 """
 import sys
 from pathlib import Path
 
 import pandas as pd
 
-sys.path.append(str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parents[1]))   # py/ 공용 모듈
 from db import connect   # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 PARTS = {"타이어": "tire", "체인": "chain", "안장": "saddle", "페달": "pedal"}
 HALVES = [("2024H1", "2024-01-01", "2024-06-30"), ("2024H2", "2024-07-01", "2024-12-31"), ("2025H1", "2025-01-01", "2025-06-30"),
           ("2025H2", "2025-07-01", "2025-12-31"), ("2026H1", "2026-01-01", "2026-06-30")]

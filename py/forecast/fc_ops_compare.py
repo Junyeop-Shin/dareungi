@@ -5,14 +5,14 @@ forecast_track(actuals.py)의 예보판·달력판·나이브에, 2026-10-08까�
 
 입력: ops.duckdb forecast_track, daily_district
 출력: output/tables/fc_ops_compare_live.csv
-실행: .venv/bin/python py/fc_ops_compare.py
+실행: .venv/bin/python py/forecast/fc_ops_compare.py
 """
 import sys
 from pathlib import Path
 
 import pandas as pd
 
-sys.path.append(str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parents[1]))   # py/ 공용 모듈
 import fc_ops                      # noqa: E402
 from common import ROOT, connect   # noqa: E402
 

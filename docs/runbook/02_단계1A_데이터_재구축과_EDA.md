@@ -250,12 +250,12 @@ print(*names[-8:], sep="\n")
 
 > **결과(2026-10-05) — 아래 절차와 다르게 한 것.** 이유와 근거 수치는 `docs/notes/01_데이터전처리_메모.md`, `docs/decision_log.md`.
 > - 노트북 이름은 `1A_Build_master.ipynb`(대문자 B).
-> - 고장신고: 파일에서 통째로 빠진 6일을 API로 채웠다(`py/failure_gaps.py`). 아래 "반기 경계일 보간"은 하지 않았다.
+> - 고장신고: 파일에서 통째로 빠진 6일을 API로 채웠다(`py/build/failure_gaps.py`). 아래 "반기 경계일 보간"은 하지 않았다.
 > - 대여건수: `read_rent_daily`에 쉼표 제거와 빈 줄 제거를 넣었고, 2015~2017 반납내역은 읽지 않는다.
-> - 이용정보: 아래 `read_use`(열 이름 기준)로는 읽히지 않는다(헤더가 10가지). `py/use_daily.py`가 열 위치로 읽어 날짜별 합계를 만든다. 구멍 난 564일은 `py/rent_history_daily.py`가 대여이력에서 만든 값으로 바꾼다.
+> - 이용정보: 아래 `read_use`(열 이름 기준)로는 읽히지 않는다(헤더가 10가지). `py/build/use_daily.py`가 열 위치로 읽어 날짜별 합계를 만든다. 구멍 난 564일은 `py/build/rent_history_daily.py`가 대여이력에서 만든 값으로 바꾼다.
 > - 이동거리: `dist_km_raw`(기록 그대로), `dist_zero_share`, `dist_ok`, `dist_km`(dist_ok인 날만)으로 나눴다.
 > - 운영이 멈춘 날: `no_service`(3일), `partial_service`(10일), 신고만 적은 기간 `report_anomaly`(2023-09-07 ~ 10-10)를 표시했다. 2019-09-07은 보간하지 않고 0.
-> - 운영 대수: `fleet.csv` 보간 대신 `bikes_active`, `bikes_active_prev`(그 달·전달에 대여된 자전거번호 수, `py/bike_month.py`).
+> - 운영 대수: `fleet.csv` 보간 대신 `bikes_active`, `bikes_active_prev`(그 달·전달에 대여된 자전거번호 수, `py/build/bike_month.py`).
 > - 코로나·개입 더미(`covid` 등)는 아직 넣지 않았다. 날짜·출처는 `data/raw/external/events.csv`에 있고, 무엇을 넣을지는 체크포인트 B에서 정한다.
 
 ### 1차 대비 바꾸는 규칙

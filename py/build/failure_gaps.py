@@ -11,15 +11,17 @@ API에 날짜를 주면 그날부터 약 30일치가 시간순으로 와서, 앞
 출력: data/raw/failure_api/failure_gap_days.csv
       열: bike_no, reg_dt(등록일시), kind(고장구분), gap_day(빠졌던 날짜),
           is_gap(True면 빠졌던 날의 행, False면 검증용 다음 날 행)
-실행: python py/failure_gaps.py  (.env에 SEOUL_API_KEY 필요)
+실행: python py/build/failure_gaps.py  (.env에 SEOUL_API_KEY 필요)
 """
+import sys
 from pathlib import Path
 
 import pandas as pd
 
-from seoul_api import seoul_get
+sys.path.append(str(Path(__file__).resolve().parents[1]))   # py/ 공용 모듈
+from seoul_api import seoul_get   # noqa: E402
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "data/raw/failure_api/failure_gap_days.csv"
 
 # 2019년 이후 신고가 0건인 날 전부

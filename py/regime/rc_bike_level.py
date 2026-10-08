@@ -17,8 +17,8 @@ R4a(헛대여율 vs 신고율)는 총량 비교라 고장 자전거를 마주친
 
 입력: data/processed/rent_2021/ (2020-10 ~ 2021-09), data/processed/rent/ (2023-07 ~ 2026-06), data/processed/fail_std.parquet
 출력: output/tables/rc_4b_monthly.csv, rc_5_monthly.csv, rc_6_monthly.csv (월별), rc_456_periods.csv (비교 기간별 요약)
-실행: .venv/bin/python py/rc_bike_level.py            (두 폴더 모두)
-      .venv/bin/python py/rc_bike_level.py rent_2021  (한 폴더만)
+실행: .venv/bin/python py/regime/rc_bike_level.py            (두 폴더 모두)
+      .venv/bin/python py/regime/rc_bike_level.py rent_2021  (한 폴더만)
 """
 import sys
 from pathlib import Path
@@ -26,11 +26,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-sys.path.append(str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parents[1]))   # py/ 공용 모듈
 import duckdb                            # noqa: E402
 from rc_duplicates import PERIODS        # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 FOLDERS = {"rent_2021": ("2020-10-01", "2021-09-30"), "rent": ("2023-07-01", "2026-06-30")}
 
 

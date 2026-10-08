@@ -4,7 +4,7 @@ skill은 나이브 B1 대비 오차 감소율이다. 검증과 테스트를 나�
 
 입력: output/tables/fc_valid.csv, fc_test.csv  (notebooks/1C_forecast.ipynb, 1C_test.ipynb가 저장)
 출력: output/figures/fc_skill_bars.png
-실행: .venv/bin/python py/report_figs.py  (저장소 루트)
+실행: .venv/bin/python py/forecast/report_figs.py  (저장소 루트)
 """
 from pathlib import Path
 
@@ -16,7 +16,7 @@ import pandas as pd
 
 plt.rcParams["font.family"] = "AppleGothic"
 plt.rcParams["axes.unicode_minus"] = False
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 PARTS = {"fail_tire": "타이어", "fail_chain": "체인", "fail_saddle": "안장", "fail_pedal": "페달", "total_faults": "전체"}
 MODELS = [("selected", "선택한 음이항"), ("S1_B", "구조 나이브 S1"), ("GRU_B", "GRU"), ("GLM_D", "음이항(날씨 없음)")]
 

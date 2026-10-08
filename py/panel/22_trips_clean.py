@@ -14,17 +14,17 @@
 
 입력: data/processed/rent/*/*/*.parquet
 출력: DuckDB trips, output/tables/panel_2a2_checks.csv, panel_2a2_by_year.csv, panel_2a2_types.csv
-실행: .venv/bin/python py/22_trips_clean.py  (5~10분. DB 파일을 잠그므로 적재 스크립트와 동시에 돌리지 않는다)
+실행: .venv/bin/python py/panel/22_trips_clean.py  (5~10분. DB 파일을 잠그므로 적재 스크립트와 동시에 돌리지 않는다)
 """
 import sys
 from pathlib import Path
 
 import pandas as pd
 
-sys.path.append(str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parents[1]))   # py/ 공용 모듈
 from db import connect   # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 T = ROOT / "output/tables"
 
 

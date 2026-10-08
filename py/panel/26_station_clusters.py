@@ -10,7 +10,7 @@
 
 입력: DuckDB trips, station
 출력: data/interim/station_cluster.csv (st_no, cluster_k4~k6), output/tables/panel_2a6_cluster_profile.csv
-실행: .venv/bin/python py/26_station_clusters.py  (1~2분)
+실행: .venv/bin/python py/panel/26_station_clusters.py  (1~2분)
 """
 import sys
 from pathlib import Path
@@ -18,10 +18,10 @@ from pathlib import Path
 import pandas as pd
 from sklearn.cluster import KMeans
 
-sys.path.append(str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parents[1]))   # py/ 공용 모듈
 from db import connect   # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 TRAIN_END = "2025-07-01"
 
 

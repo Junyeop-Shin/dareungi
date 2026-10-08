@@ -10,11 +10,11 @@
 
 사후 분석이라 예측 모형(1C) 선택에는 쓰지 않는다.
 
-입력: data/processed/day_signal.parquet (py/day_signal.py), data/processed/daily_master_v2.parquet
+입력: data/processed/day_signal.parquet (py/build/day_signal.py), data/processed/daily_master_v2.parquet
 출력: output/tables/rc_4a_monthly.csv  월별 헛대여율(대여 천 건당, 2분 / 2~3분 / 2~5분)과 신고율(대여 만 건당)
       output/tables/rc_4a_ratios.csv   비교 기간별 P1/P0 비(헛대여 기준별, 부품별)
       output/figures/rc_4a_sham_vs_report.png
-실행: .venv/bin/python py/rc_sham.py
+실행: .venv/bin/python py/regime/rc_sham.py
 """
 from pathlib import Path
 
@@ -28,7 +28,7 @@ from rc_duplicates import PERIODS
 
 plt.rcParams["font.family"] = "AppleGothic"
 plt.rcParams["axes.unicode_minus"] = False
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 PARTS = {"fail_tire": "타이어", "fail_chain": "체인", "fail_saddle": "안장", "fail_pedal": "페달", "total_faults": "전체"}
 # 헛대여 기준. 2025년까지는 같은 대여소 2분 미만 반납이 기록에 없어 아래쪽을 2분으로 자른다
 SHAM = {"sham_2": "2분(정확히)", "sham_2_3": "2 ~ 3분", "sham_2_5": "2 ~ 5분", "same_any": "같은 대여소 반납(시간 무관)"}

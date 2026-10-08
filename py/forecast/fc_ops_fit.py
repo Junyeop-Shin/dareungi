@@ -13,7 +13,7 @@ fc_models.predict_s1)으로 낸 값과 같은지 확인한다. 예보판은 1C �
       output/models/kma_calibration.json(kma_forecast.py)
 출력: output/models/expo_ops.json(모형 두 개의 식·계수·alpha), fc_ops_spec.json(평년기온 계수, 80% 구간 보정값, 재현 결과),
       output/tables/fc_ops_replay_valid.csv
-실행: .venv/bin/python py/fc_ops_fit.py   (1 ~ 2분)
+실행: .venv/bin/python py/forecast/fc_ops_fit.py   (1 ~ 2분)
 """
 import datetime as dt
 import json
@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-sys.path.append(str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parents[1]))   # py/ 공용 모듈
 import fc                                                    # noqa: E402
 import fc_ops                                                # noqa: E402
 from fc_expo import E2_WX, expo_rows                         # noqa: E402
@@ -32,10 +32,12 @@ from fc_models import predict_s1                             # noqa: E402
 TEST_REFIT_END = "2024-12-31"        # 1C 테스트 때 다시 맞춘 범위와 같게
 
 
-def fit_models(m, end):
-    """1C와 같은 식으로 두 대여량 모형을 맞춘다"""
-    cal = fc.fit_expo(m, weather=False, end=end)
-    rows = expo_rows(m, fc.TRAIN_DAYS[0], end, "B")
+def fit_models(m, end, start=None):
+    """1C와 같은 식으로 두 대여량 모형을 맞춘다. start를 안 주면 1C와 같은 2021-04-08부터"""
+    start = start or fc.TRAIN_DAYS[0]
+    tr = m[m.date.between(start, end) & (m.no_service == 0)].dropna(subset=["expo_lvl"])
+    cal = fc.fit_nb_fc("rentals ~ " + fc.EXPO_CAL, tr)[0]                   # fc.fit_expo(weather=False)와 같은 식, 시작일만 받는다
+    rows = expo_rows(m, start, end, "B")
     kma = fc.fit_nb_fc("rentals ~ " + fc.EXPO_CAL + E2_WX, rows.assign(tavg_anom=rows.tavg - rows.tavg_normal))[0]
     return {"kma": kma, "cal": cal}
 

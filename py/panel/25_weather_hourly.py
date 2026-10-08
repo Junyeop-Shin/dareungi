@@ -7,7 +7,7 @@ rain_prev3h > 0은 젖은 노면 주행(비 그친 직후 포함)으로 쓴다.
 
 입력: 공공데이터포털 API(.env의 DATA_GO_KR_KEY). 한 달씩, 페이지당 999행
 출력: data/raw/weather/asos_hourly_108_202307_202606.csv, DuckDB wx_hourly·wx_h, output/tables/panel_2a5_wx_checks.csv
-실행: .venv/bin/python py/25_weather_hourly.py  (API 약 40회, 1~2분)
+실행: .venv/bin/python py/panel/25_weather_hourly.py  (API 약 40회, 1~2분)
 """
 import os
 import sys
@@ -18,10 +18,10 @@ import pandas as pd
 import requests
 from dotenv import load_dotenv
 
-sys.path.append(str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parents[1]))   # py/ 공용 모듈
 from db import connect   # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
 RAW = ROOT / "data/raw/weather/asos_hourly_108_202307_202606.csv"
 URL = "http://apis.data.go.kr/1360000/AsosHourlyInfoService/getWthrDataList"

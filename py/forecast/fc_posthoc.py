@@ -11,7 +11,7 @@
 입력: data/processed/daily_master_v2.parquet(fc.load_master), 기상청 예보(시나리오 B)
 출력: output/tables/fc_posthoc_lvl1.csv       검증·테스트 skill, bias%, 계수(원래 판 / 계수 1 고정 / 구조 나이브)
       output/tables/fc_posthoc_lvl1_half.csv  테스트 반기별
-실행: .venv/bin/python py/fc_posthoc.py  (저장소 루트, 2~3분)
+실행: .venv/bin/python py/forecast/fc_posthoc.py  (저장소 루트, 2~3분)
 """
 import sys
 import warnings
@@ -20,13 +20,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-sys.path.append(str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parents[1]))   # py/ 공용 모듈
 warnings.filterwarnings("ignore")
 from fc import EXPO_CAL, PARTS, TRAIN_DAYS, fit_nb_fc, future_frame, load_master, make_base, score     # noqa: E402
 from fc_expo import E2_WX, expo_rows                                                                  # noqa: E402
 from fc_models import GLM_CAL, GLM_WX, predict_s1                                                     # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 RHS_FREE = GLM_CAL + GLM_WX                                   # 원래 판: np.log(lvl) 계수 추정
 RHS_FIXED = RHS_FREE.replace("np.log(lvl) + ", "")            # 고정 판: lvl은 offset으로(계수 1)
 

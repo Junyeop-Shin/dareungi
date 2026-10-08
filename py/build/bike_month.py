@@ -10,7 +10,7 @@ daily_master에는 자전거 구분이 없어서 대여이력에서 자전거번
 입력: data/raw/rent_history/  (py/rent_history_daily.py와 같은 원본)
 출력: data/interim/bike_month/bike_month.parquet
       열: bike(자전거번호의 숫자 부분), ym(YYMM), n(그 달 대여 건수)
-실행: python py/bike_month.py  (전체 약 52GB, 2~3분)
+실행: python py/build/bike_month.py  (전체 약 52GB, 2~3분)
 """
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -19,7 +19,7 @@ import pandas as pd
 
 from rent_history_daily import ALL_MONTHS, _open_month
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def one_month(yymm):

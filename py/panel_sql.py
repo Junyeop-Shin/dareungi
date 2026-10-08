@@ -1,4 +1,4 @@
-"""자전거×주 패널 SQL. 분석(py/29_panel.py)과 운영(py/jobs/daily.py)이 같은 정의를 쓰도록 한곳에 둔다.
+"""자전거×주 패널 SQL. 분석(py/panel/29_panel.py)과 운영(py/jobs/daily.py)이 같은 정의를 쓰도록 한곳에 둔다.
 
 2A-9의 주별 이용 요약(BW_USAGE_SELECT), 주별 신고(BW_FAIL_SELECT), 격자(PANEL0_SQL), 누적·라벨(PANEL_SQL)을
 문자열로 갖고 있다. 운영에서는 통행 원천이 trips_seq(파일)가 아니라 trips_live_x(API)라서 {src} 자리에

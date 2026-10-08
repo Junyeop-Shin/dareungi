@@ -1,6 +1,6 @@
 """대여이력(건별 원본)을 날짜별 합계로 줄인다.
 
-이용정보(일별) 파일(py/use_daily.py)의 구멍을 메우고, 거리 기록 품질을 재는 데 쓴다.
+이용정보(일별) 파일(py/build/use_daily.py)의 구멍을 메우고, 거리 기록 품질을 재는 데 쓴다.
 이용정보(일별)에는 이런 구멍이 있다.
   - 2016년, 2022-05 파일이 없다
   - 2021-04~06, 2025-02 파일은 엑셀 최대 줄 수(1,048,576)에서 잘려 뒤쪽 날짜가 모자라다
@@ -18,7 +18,7 @@
 출력: data/interim/rent_hist_daily/rent_hist_daily.parquet
       열: date, n_use(대여 건수), dist_m(이용거리 합, m), min_use(이용시간 합, 분),
           dist_zero(이용거리 0·빈칸 건수), ym(원본 월 파일, YYMM)
-실행: python py/rent_history_daily.py  (전체 약 52GB, 몇 분)
+실행: python py/build/rent_history_daily.py  (전체 약 52GB, 몇 분)
 """
 import zipfile
 from concurrent.futures import ProcessPoolExecutor
@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 RAW = ROOT / "data/raw/rent_history"
 
 # 처리할 달(YYMM): 2015-09(첫 파일) ~ 2026-06

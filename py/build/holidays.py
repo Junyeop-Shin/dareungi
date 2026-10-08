@@ -5,7 +5,7 @@
 한국천문연구원이 다음 해 공휴일을 보통 그해 여름쯤 올리므로 연말 전에 한 번 돌린다. 임시공휴일이 새로 지정되면 다시 받는다.
 
 출력: data/raw/calendar/holidays_<연도>.csv (date, name)
-실행: .venv/bin/python py/holidays.py 2027
+실행: .venv/bin/python py/build/holidays.py 2027
 """
 import os
 import sys
@@ -15,10 +15,10 @@ import pandas as pd
 import requests
 from dotenv import load_dotenv
 
-sys.path.append(str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parents[1]))   # py/ 공용 모듈
 from common import mask_keys   # noqa: E402
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 URL = "http://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getRestDeInfo"
 load_dotenv(ROOT / ".env")
 

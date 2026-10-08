@@ -28,7 +28,7 @@ hour는 발표 시각, forecast는 발표 후 몇 시간 뒤인지, value는 예
 출력: data/interim/weather_forecast/kma_by_origin.parquet  원점 × lead 0~6: tavg, tmax, tmin, rain_mm, rain_any, snow_cm, src
       output/models/kma_calibration.json                   보정값(중기 평균기온 식, 강수확률별 강수량, lead별 기온 편향)
       output/tables/fc_forecast_error_kma.csv              lead별 예보 오차(관측 대비, 학습·검증 구간)
-실행: python py/kma_forecast.py
+실행: python py/forecast/kma_forecast.py
 """
 import glob
 import json
@@ -39,7 +39,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 SHORT = ROOT / "data/raw/forecast_short"
 MID = ROOT / "data/raw/forecast_mid"
 OUT = ROOT / "data/interim/weather_forecast/kma_by_origin.parquet"

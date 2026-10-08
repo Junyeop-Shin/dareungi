@@ -11,17 +11,17 @@ gap_h 분포는 몇 시간(계속 운행)과 며칠(수거·정비) 두 봉우�
 
 입력: data/processed/fail_std.parquet, DuckDB trips, station
 출력: DuckDB fail, fail_loc, fail_gap, output/tables/panel_2a8_checks.csv, panel_2a8_gap_hist.csv, panel_2a8_district.csv
-실행: .venv/bin/python py/28_fail_join.py  (1~2분)
+실행: .venv/bin/python py/panel/28_fail_join.py  (1~2분)
 """
 import sys
 from pathlib import Path
 
 import pandas as pd
 
-sys.path.append(str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parents[1]))   # py/ 공용 모듈
 from db import connect   # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def main():

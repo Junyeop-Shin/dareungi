@@ -16,14 +16,14 @@
 입력: data/processed/fail_std.parquet (bike, reg_ts, kind, keep), data/processed/daily_master_v2.parquet (rentals)
 출력: output/tables/rc_2_decomp.csv  비교 기간별 분해
       output/tables/rc_2_monthly.csv 월별 지표
-실행: .venv/bin/python py/rc_duplicates.py
+실행: .venv/bin/python py/regime/rc_duplicates.py
 """
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 # 비교 기간. 기본은 반기 단위 전년 같은 반기 비교다(계절이 같고 2026 상반기까지 볼 수 있다).
 # 2025 상반기에는 변화 전인 1~2월이 섞여 비가 희석되므로 3~8월 비교를 함께 둔다. 12개월·6개월은 민감도.
 PERIODS = {

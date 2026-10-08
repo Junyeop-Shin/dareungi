@@ -2,7 +2,7 @@
 
 시나리오 C는 예보 오차를 가정으로 흉내 낸다(기온 표준편차 당일 1.0℃ → 6일 뒤 2.5℃, 비 유무 오답률
 10% → 28%). 이 가정이 현실적인지 보려고 실제로 나왔던 과거 예보와 관측을 비교한다.
-기준 시나리오는 기상청 예보(py/kma_forecast.py, 시나리오 B)이고 이 파일은 참고용이다.
+기준 시나리오는 기상청 예보(py/forecast/kma_forecast.py, 시나리오 B)이고 이 파일은 참고용이다.
 
 자료는 Open-Meteo Previous Runs API(무료, 키 없음)다. <변수>_previous_dayK가 K일 전에 낸 예보다.
 일본 기상청(JMA) 전지구 모형은 2021-03부터 기온·강수·눈의 1~7일 전 예보가 다 있어 전 구간을 한 출처로
@@ -15,7 +15,7 @@
 출력: data/raw/weather/openmeteo_jma_previous_runs_hourly_202103_202606.csv  받은 원본(시간 단위)
       data/interim/weather_forecast/forecast_daily.parquet  날짜 × days_before(1~7)별 tavg, tmax, tmin, rain_mm, snow_cm
       output/tables/fc_forecast_error.csv                   며칠 전 예보인지별 오차(관측 대비)
-실행: python py/weather_forecast.py  (원본이 있으면 다시 받지 않는다)
+실행: python py/forecast/weather_forecast.py  (원본이 있으면 다시 받지 않는다)
 """
 import time
 from pathlib import Path
@@ -23,7 +23,7 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 RAW = ROOT / "data/raw/weather/openmeteo_jma_previous_runs_hourly_202103_202606.csv"
 URL = "https://previous-runs-api.open-meteo.com/v1/forecast"
 SEOUL = dict(latitude=37.5714, longitude=126.9658, timezone="Asia/Seoul", models="jma_seamless")   # 서울 기상관측소(108) 위치

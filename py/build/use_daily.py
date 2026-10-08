@@ -11,14 +11,16 @@
 입력: data/interim/use_daily_utf8/  (원본의 UTF-8 사본)
 출력: data/interim/use_daily_agg/use_daily_by_file.parquet  파일×날짜별 합계(n_use, dist_m, min_use)
       data/interim/use_daily_agg/use_daily_files.csv        파일별 점검표(행 수, 기간, 읽기 실패 행 수)
-실행: python py/use_daily.py  (약 1분), 노트북에서는 from use_daily import build_use_daily
+실행: python py/build/use_daily.py  (약 1분), 노트북에서는 sys.path.append("../py/build") 뒤 from use_daily import build_use_daily
 """
 from concurrent.futures import ProcessPoolExecutor
+import sys
 from pathlib import Path
 
 import pandas as pd
 
-from prep import data_files
+sys.path.append(str(Path(__file__).resolve().parents[1]))   # py/ 공용 모듈
+from prep import data_files   # noqa: E402
 
 # 열 위치 → 이름. n_use 이용건수, dist_m 이동거리(m), min_use 이용시간(분)
 COLS = {0: "date_raw", 6: "n_use", 9: "dist_m", 10: "min_use"}
@@ -83,7 +85,7 @@ def build_use_daily(src_dir, out_dir, workers=4):
 
 if __name__ == "__main__":
     # 전체 폴더를 처리하고 파일별 점검표를 출력한다
-    root = Path(__file__).resolve().parent.parent
+    root = Path(__file__).resolve().parents[2]
     by_file, info = build_use_daily(root / "data/interim/use_daily_utf8", root / "data/interim/use_daily_agg")
     pd.set_option("display.width", 250); pd.set_option("display.max_rows", 200)
     print(info.assign(file=info.file.str[-26:]).to_string())

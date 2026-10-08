@@ -21,19 +21,19 @@
 입력: DuckDB trips_seq, fail_gap, fail, bike_year, data/interim/station_cluster.csv, data/processed/daily_master_v2.csv
 출력: DuckDB station_cluster, bw_usage, bw_fail, wx_w, panel0, panel, bike_info,
       data/processed/panel/bike_week.parquet, output/tables/panel_2a9_checks.csv
-실행: .venv/bin/python py/29_panel.py  (5~10분)
+실행: .venv/bin/python py/panel/29_panel.py  (5~10분)
 """
 import sys
 from pathlib import Path
 
 import pandas as pd
 
-sys.path.append(str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parents[1]))   # py/ 공용 모듈
 from db import connect   # noqa: E402
 from panel_sql import (BW_FAIL_SELECT, BW_USAGE_SELECT, CLUSTER_K, PANEL0_SQL, PANEL_SQL, REPAIR_H,   # noqa: E402
                        cl_cols_expr, sh_cl_expr)
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def main():

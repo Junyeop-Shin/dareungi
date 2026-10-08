@@ -15,7 +15,7 @@
       same_any  같은 대여소 반납(시간 조건 없음)
 주의: 0~1분 대여 기록은 2026년 파일에만 있다(그 전에는 2분 미만 대여가 아예 없다). 연도 비교에는
 sham3 − sham01(2~3분), sham5 − sham01(2~5분)을 쓴다.
-실행: .venv/bin/python py/day_signal.py  (저장소 루트, 52GB를 한 번 훑어 몇 분)
+실행: .venv/bin/python py/build/day_signal.py  (저장소 루트, 52GB를 한 번 훑어 몇 분)
 """
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -24,7 +24,7 @@ import pandas as pd
 
 from rent_history_daily import ALL_MONTHS, _open_month
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def month_signal(yymm):

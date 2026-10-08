@@ -168,7 +168,7 @@
 - 재현: `notebooks/1A_Build_master.ipynb` → `1A_regime` → `1A_eda` → `1B_regression` → `1C_forecast` → `1C_test`. 공용 코드 `py/`. 환경 `requirements.txt`(Python 3.14).
 - 필수 그림: `output/figures/fc_test_selected.png`(테스트 실제 vs 예측, 80% 구간), `fc_skill_bars.png`(모형별 skill), `reg_season_by_part.png`·`eda_temp.png`(기온·계절 효과), `regime_monthly_rate.png`(월별 신고율과 레짐)
 
-## 부록 B — 테스트 뒤 사후 분석: 수준 변수의 계수를 1로 고정하면 (`py/fc_posthoc.py`, `fc_posthoc_lvl1.csv`)
+## 부록 B — 테스트 뒤 사후 분석: 수준 변수의 계수를 1로 고정하면 (`py/forecast/fc_posthoc.py`, `fc_posthoc_lvl1.csv`)
 
 > **이 절의 테스트 수치는 최종 성능이 아니다.** 8절의 진단이 맞는지 확인하려고 테스트 결과를 본 뒤에 만든 모형이다. 5절의 선택 모형과 결론은 바꾸지 않는다.
 
