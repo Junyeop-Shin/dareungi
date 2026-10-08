@@ -17,6 +17,7 @@ data/processed/*
 !data/raw/
 data/raw/*
 !data/raw/external/
+!data/raw/calendar/
 *.duckdb
 *.duckdb.wal
 

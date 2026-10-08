@@ -1,5 +1,9 @@
-"""부품별 고장 예측(상세 ①) — 08a 설계서 4절. 2026-10-08 사람 요청: 인력 계산 삭제(근거 정보 없음), 제목만 읽어도 무엇을 세는지 알게, 라이트·다크.
-요약 카드 5개 → 부품별 주별 신고 → 준비 수량 → 대여 1,000건당 고장 신고 → 요일별 신고 → 예측 정확도"""
+"""부품별 고장 예측 화면(08a 설계서 4절).
+
+배치: 요약 카드 5개 → 부품별 주별 신고 → 준비 수량 → 대여 1,000건당 고장 신고 → 요일별 신고 → 예측 정확도.
+예측은 서울 전체로만 낸다. 자치구를 고르면 신고 기록만 그 구로 좁히고 예측선은 숨긴다.
+주의: 정비 인력 환산은 근거 자료(인당 처리량 등)가 없어 넣지 않았다.
+"""
 import sys
 from pathlib import Path
 
@@ -142,7 +146,7 @@ with st.container(border=True):
                                     hovertemplate="%{x} 주 '지난주와 같다'의 차이 %{y:.0f}%<extra></extra>")])
             fig.update_layout(height=220, barmode="group", yaxis=dict(ticksuffix="%"), legend=dict(y=-0.2))
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-        st.markdown('<div class="card-caption">예측 방법: 최근 4주 동안 대여 1건당 신고 비율 × 지난주 대여 건수. 지난 주들은 그 시점까지의 기록만으로 같은 방법을 적용해 다시 계산했습니다.</div>',
+        st.markdown('<div class="card-caption">예측 방법: 최근 4주 동안 대여 1건당 신고 비율 × 앞으로 7일 예상 대여 건수(요일·공휴일·기상청 예보로 계산). 예보를 받지 못한 주는 요일·공휴일만으로 계산합니다. 지난 주들은 그 시점까지의 기록과 그때 나온 예보로 다시 계산했습니다.</div>',
                     unsafe_allow_html=True)
     else:
         ui.empty("예측 기록이 2주 이상 쌓이면 보여 드립니다.")

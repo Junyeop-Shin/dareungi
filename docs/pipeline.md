@@ -12,7 +12,7 @@
 | collect_wx | `py/jobs/collect_wx.py` | 06:30 (obs), 05:20·17:20 (fcst) | ASOS 시간자료, 단기예보(+103h), 중기예보(4 ~ 10일, 06·18시 발표) | `wx_hourly_live`, `fcst_archive`(src = short / mid) | 예보는 발표 시각과 함께 → 1C '실제 예보' 백테스트 재료. 중기 API 승인 확인 2026-10-07 |
 | collect_station | `py/jobs/collect_station.py` | 월 05:00 | 대여소 API 2종 | `station_hist`, `station_live` | 새 대여소만 고도 API |
 | daily | `py/jobs/daily.py` | 매일 07:00 | 위 표들 + `actuals.refresh()`(일 × 자치구 실적 → `weekly_actual`·`daily_reports`·`forecast_track`) | `trips_live_x`, `bw_usage`·`bw_fail`(이번 주), `panel`, `panel_latest`, `bike_card`, `quality_log` | 품질 점검 + 스냅샷 |
-| weekly | `py/jobs/weekly.py` | 월 07:30 | `panel_latest`, 모형, `daily_district` | `bike_risk_latest`, `forecast_weekly` | 완결된 주로만 점수. 예측 = 구조 나이브, 80% 구간은 `forecast_track` 과거 52주 상대오차 10 ~ 90%로 보정 |
+| weekly | `py/jobs/weekly.py` | 월 07:30 | `panel_latest`, 모형, `daily_district` | `bike_risk_latest`, `forecast_weekly` | 완결된 주로만 점수. 예측 = 최근 4주 신고율 × 대여량 예측(`py/fc_ops.py`). 예보판을 보여 주고 예보가 비면 달력판, 두 값 모두 기록. 80% 구간은 2024 검증 구간 오차(`fc_ops_spec.json`) |
 | publish | `py/jobs/publish.py` | daily·weekly 끝에 | 위 표 | `serving/*.parquet` | 원자적 교체. 대시보드는 이것만 읽음 |
 | actuals | `py/jobs/actuals.py` | daily가 호출. 과거분은 `actuals.py hist` 한 번 | 분석 DB(과거), `trips_live`·`fail_live`(이후) | `daily_district(_hist/_live)`, `weekly_actual`, `daily_reports`, `forecast_track` | 대여 = 대여 대여소의 구, 신고 = 직전 반납 대여소의 구. 과거분은 마스터와 신고 건수 완전 일치 |
 | init_ops | `py/jobs/init_ops.py` | 처음 한 번, 반기 대사 뒤 | 분석 DB | `bw_usage`, `bw_fail`, `bike_info`, `station_base`, `wx_w`, `station_cluster` | '마지막 신고 이후 누적'을 2023-07부터 잇는다 |
@@ -45,6 +45,7 @@
 | 백필 뒤 주별 요약 다시 | `daily.py --rebuild-from 2026-06-29` (그 주부터 API 자료로 자전거별 주간 요약을 다시 만든다. 매일 실행은 이번 주만) |
 | 고장신고 과거 구간 | `collect_fail.py range 2026-07-01 2026-10-07` (28일씩) |
 | 반기 파일과 API 사이 공백(2026-07-01 ~ 10-04) | `PYTHONUNBUFFERED=1 nohup .venv/bin/python py/jobs/backfill_rent.py 2026-07-01 2026-10-04 > logs/backfill.log &` — 한 시간대씩 받고 3초 쉬어 다른 작업이 끼어들 수 있게. 시간대당 약 20초, 전체 약 10시간(2026-10-07 밤 시작). 멈추면 같은 명령으로 이어서(받은 시간대는 건너뜀) |
+| 주간 예측 대여량 모형 다시 맞춤 | `py/kma_forecast.py`(보정값) → `py/fc_ops_fit.py`(재현 확인 뒤 저장) → `actuals.py track_hist`(과거 주 예보판) |
 | 모형 바꿈 | `output/models/risk_spec.json`과 모형 파일 교체 → 다음 월요일 weekly에서 반영. 버전은 `model_version`에 남음 |
 | 스키마 변화(API 필드 추가·삭제) | `INSERT BY NAME`에서 오류 → `raw_*` 표를 새 필드로 다시 만들고 뷰 수정 |
 
@@ -69,15 +70,21 @@
 ## 알려진 차이·한계
 
 - 실시간 API에는 0 ~ 1분 대여가 그대로 들어온다(2026년 파일과 같음). 패널 규칙대로 "같은 대여소 ≤ 1분"은 이용 요약에서 뺀다.
-- 중기예보 API는 2026-10-07 승인 확인·수집 시작. 기상청은 중기예보를 **4일 뒤부터** 준다(3일 뒤 항목은 비어 있음). 단기예보가 +103시간이라 4일째는 둘이 겹친다. 주간 예측에 1C 음이항을 붙이는 것은 일별 자료가 35일 쌓인 뒤.
-- 반기 파일(~2026-06-30)과 API 수집 시작(2026-10-04) 사이 공백은 채우기 전까지 패널의 누적값이 과소.
+- 중기예보 API는 2026-10-07 승인 확인·수집 시작. 기상청은 중기예보를 **4일 뒤부터** 준다(3일 뒤 항목은 비어 있음). 단기예보는 3일째부터 3시간 간격이라 값 하나를 3시간으로 센다(1C 과거 파일과 같은 규칙).
+- 주간 예측(2026-10-08부터): 최근 4주 신고율 × 대여량 예측. 대여량은 예보판(1C K2, 실시간 예보를 `kma_calibration.json`으로 1C와 같게 보정)과 달력판(요일·공휴일만) 두 가지. 화면은 예보판, 앞으로 7일 중 하루라도 예보가 비면 달력판으로 대신하고 경보. 두 모형 계수는 `output/models/expo_ops.json`에 고정(`py/fc_ops_fit.py`, 2024 검증 구간에서 1C 숫자 그대로 재현).
+- 그 전에 쓰던 '최근 4주 신고율 × 지난주 대여량'은 1C에서 검증된 적 없는 단순화였고, 2024 검증 구간에서 나이브보다 나빴다(`output/tables/fc_ops_replay_valid.csv`).
+- 교체 조건: 2026-10-12 이후 운영 주로 최근 12주 전체 MAE%가 달력판이 예보판보다 3%p 넘게 낮으면 경보(`fc_compare`). 교체 여부는 사람이 정한다.
+- 공휴일 표는 `data/raw/calendar/holidays_*.csv`(깃에 있음). 2027년까지 받아 두었다. 다음 해는 연말 전에 `py/holidays.py <연도>`(빠지면 경보).
+- 반기 파일(~2026-06-30)과 API 수집 시작(2026-10-04) 사이 공백은 `backfill_rent.py`로 채웠다(2026-10-08 확인: 2026-07-01 이후 빠진 시간대 0).
+- API 오류 메시지에는 키가 든 URL이 찍힌다(`requests`). `common.mask_keys()`로 가린 뒤 `job_runs`·경보·예외에 남긴다.
+- 데이터 없는 시간대는 `{"CODE": "INFO-200"}`(맨 위)로 오고, 키 오류는 JSON을 요청해도 XML(`INFO-100`)로 온다. `common.fetch`가 둘 다 처리한다.
 - 대여소 API의 번호 없는 ID 187곳은 대여이력에 번호로만 기록되어 쓰이지 않는다.
 
 ## 운영 전 점검표
 
-- [x] 멱등성: 같은 시간대 두 번 받아도 결과 같음(`DELETE` 뒤 `INSERT`)
-- [ ] 따라잡기: 맥북을 6시간 재운 뒤 빠진 시간대가 채워지는지
-- [ ] 실패 시험: 잘못된 키로 실행하면 경보
-- [ ] `serving/*.parquet`만으로 대시보드가 뜸(DB 잠금 없음)
-- [ ] 인증키가 깃·로그·스냅샷 어디에도 없음
+- [x] 멱등성: 같은 시간대 두 번 받아도 결과 같음(`DELETE` 뒤 `INSERT`). 2026-10-08 10-07 10시를 두 번 받아 행 수·내용 해시 같음
+- [x] 따라잡기: 2026-10-08 수집을 17시간 멈춘 뒤 한 번 실행 → 빠진 17시간대(95,510건)와 신고·기상을 채움
+- [x] 실패 시험: 잘못된 키로 실행 → `job_runs` fail + `[ALERT] … INFO-100 인증키가 유효하지 않습니다`, 기존 자료는 그대로(2026-10-08. 시험으로 남긴 fail 행은 지움). 웹훅 전송은 `ALERT_WEBHOOK`을 넣은 뒤 따로 확인
+- [x] `serving/*.parquet`만으로 대시보드가 뜸: `app/`에 DB 연결 코드 없음
+- [x] 인증키가 깃(커밋 14개)·로그·스냅샷 어디에도 없음(2026-10-08). 오류 메시지 속 키 노출 경로는 `mask_keys`로 막음
 - [ ] 2주 연속 무중단 수집 로그

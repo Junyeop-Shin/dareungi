@@ -91,7 +91,7 @@ from prep import to_utf8, std_name, read_any, data_files, make_utf8_folder
 - **주 단위 신고 건수는 대부분 이용량이 정한다**(변동의 70~85%). 신고율 쪽에서 크게 움직이는 것은 수준 변화, 타이어 계절성(연중 2.4배), 한파(−4℃ 이하 1.33배)뿐이다. 요일 효과(월 1.10, 토 0.87)는 기간이 달라도 같다. 더위·전날 비는 효과가 없거나 작다. 변수 목록은 `docs/variables_v1.md`. 학습에서 `no_service`, `report_anomaly`인 날은 뺀다.
 - **노출은 대여건수(`rentals`)다**(체크포인트 C, 2026-10-05. 단계 0의 "노출 = 이동거리"를 바꿨다): 이용시간·이동거리보다 AIC 약 195 낮고 검증 오차도 작다. 한파 변수는 `cold_wave`와 `winter_anom`을 둘 다 넣는다. 전날 비는 전체로는 효과가 없고 부품별로 갈린다. 부품별로 모형을 따로 맞춘다. 음이항 회귀 함수는 `py/nbreg.py`.
 - **예측(1C)**: 과제는 부품별 앞으로 7일 합계. 코드는 `py/fc.py`(과제·나이브·시나리오·채점), `py/fc_models.py`(음이항·LightGBM·ARIMAX), `py/fc_dl.py`(GRU). `py/fc_expo.py`(대여량 모형: 예보 오차가 섞인 날씨로 학습한 LightGBM), `py/kma_forecast.py`(기상청 과거 예보 → 원점별 앞으로 7일 예보, 시나리오 B. 기준 시나리오), `py/weather_forecast.py`(JMA 예보, 참고). 대여량 모형은 기상청 예보로 학습한 음이항. 예측 모형은 음이항(페달만 예보로 학습한 판)(`output/models/selection.csv`). `make_base()`는 기본으로 테스트 구간 원점을 만들지 않는다. **테스트 구간 예측·채점은 사람이 승인한 뒤 한 번만.** 맥에서는 lightgbm을 torch보다 먼저 import하고 torch 스레드를 1개로 둔다(안 그러면 프로세스가 죽거나 멈춘다).
-- **운영 파이프라인(3A)**: 작업은 `data/db/.ops.lock` 잠금을 쓰므로 동시에 두 개를 돌리지 않는다. 대시보드는 `serving/*.parquet`만 읽는다. 중기예보 API는 포털 활용신청 전(2026-10-07). crontab 등록은 사람이 한다.
+- **운영 파이프라인(3A)**: 작업은 `data/db/.ops.lock` 잠금을 쓰므로 동시에 두 개를 돌리지 않는다. 대시보드는 `serving/*.parquet`만 읽는다. 중기예보 API는 2026-10-07 승인돼 수집 중. 주간 부품 예측은 최근 4주 신고율 × 대여량 예측(`py/fc_ops.py`): 예보판(1C S1_B)을 보여 주고 달력판은 대체·병행 기록, 2026-10-12부터 12주 비교(결정 로그 2026-10-08). 신고율 음이항(1C 선택 모형)은 운영에 쓰지 않는다. crontab 등록은 사람이 한다.
 - **위험 모형 테스트는 2026-10-07에 한 번 열었다**(`risk_eval_test.csv`). 다시 돌리지 않는다. 결과를 보고 `risk_spec.json`을 바꾸지 않는다.
 - **패널(2A-9)**: `km_next`·`repaired_likely`는 라벨 쪽 정보라 2B 설명변수로 쓰지 않는다. 대여소 군집은 2025-06-30까지로만 만든다. 2B 분할: 학습 2024-01 ~ 2025-06, 검증 2025-07 ~ 12, 테스트 2026-01 ~.
 - **대여이력 적재(2A-1, 2026-10-07)**: `data/db/dareungi.duckdb`는 적재 스크립트가 잠그므로 분석 스크립트는 메모리 DB로 Parquet을 읽는다. 2026년 상세 행 수(1,851만)가 일별 대여건수(1,798만)보다 3% 많다 — 2026년 파일에만 있는 0 ~ 1분 기록 때문으로 보인다.
@@ -101,42 +101,49 @@ from prep import to_utf8, std_name, read_any, data_files, make_utf8_folder
 
 ## 7. 파일 지도
 
+**문서**
+
 | 경로 | 내용 |
 |---|---|
-| `docs/STATUS.md` | 지금 어디까지 했고 다음에 무엇을 하는지 (세션 시작 시 먼저 읽기) |
-| `docs/PROJECT_OVERVIEW.md` | 프로젝트 방향 총정리 |
-| `docs/WORKFLOW_사람-AI_역할분담.md` | 단계별 AI 작업과 사람 결정 지점 |
-| `docs/runbook/00~09` | 단계별 실행 절차(코드 포함). `[결정]` 표시 = 사람이 정함 |
+| `docs/STATUS.md` | 지금 위치, 남은 일, 열린 결정 (세션 시작 시 먼저 읽기) |
+| `docs/PROJECT_OVERVIEW.md`, `docs/WORKFLOW_사람-AI_역할분담.md` | 프로젝트 방향, 단계별 역할 분담 |
+| `docs/runbook/00~09` | 단계별 실행 절차. `[결정]` 표시 = 사람이 정함 |
 | `docs/decision_log.md` | 결정과 근거 수치 |
-| `py/fc_posthoc.py` | 부록 B 사후 분석(최근 4주 신고율 계수 1 고정). 테스트 뒤 수정이므로 참고치. `selection.csv`는 바꾸지 않는다 |
-| `py/22_trips_clean.py` ~ `py/29_panel.py` | 단계 2A-2 ~ 2A-9: 정제·표시 → 대여소·고도 → (OD는 SQL) → 시간별 날씨 → 군집 → 통행 테이블 → 신고 결합 → 자전거×주 패널 `data/processed/panel/bike_week.parquet`. 변수 사전 `docs/panel_dictionary.md`, 수치 `docs/notes/05_개체패널_메모.md`. DuckDB 파일 약 17GB(깃 밖) |
-| `py/db.py`, `py/21_rent_to_parquet.py` | 단계 2A-1: DuckDB 연결, 대여이력 적재(2015 ~ 2023-06 요약 `bike_year`, 2020-10 ~ 2021-09 상세 `data/processed/rent_2021/`, 2023-07 ~ 상세 `data/processed/rent/`). 처리 기록 `docs/load_log.csv`. **같은 파일을 두 번 넣으면 중복** |
-| `py/rc_cohort.py` | 04b R7 코호트(처음 등장 시기)별 신고율. 2019년 이전 번호는 2024년 이후 없다(QR 때 전부 재부여) |
-| `py/rc_bike_level.py` | 04b R4b·R5·R6(헛대여 뒤 신고 확률, 신고 후 공백, 신고 없는 중단). 적재 중에는 메모리 DB로 Parquet만 읽는다 |
-| `py/day_signal.py`, `py/rc_changepoint.py`, `py/rc_duplicates.py`, `py/rc_sham.py` | 레짐 원인 사후 분석(04b R1·R2·R4a). 날짜별 헛대여 수(`data/processed/day_signal.parquet`), 변화점, 신고 분해, 헛대여율 대 신고율. 결과는 `docs/notes/04_레짐원인_메모.md` |
-| `docs/report_stage1.md` | 단계 1 보고서 초안(2026-10-07). 숫자는 `output/tables/` 인용, 문장은 사람이 다듬는다 |
-| `app/admin/`, `app/citizen/`, `app/common/` | 단계 3B 대시보드(설계 `docs/reference/08a`). 관리자 앱 = 홈 + 정비·부품 예측 + 점검 우선순위(`st.navigation`, 자치구 필터 공유·주소 동기화), 시민 조회는 별도 앱. 홈은 사람이 준 시안. 라이트·다크 두 테마(`.streamlit/config.toml`). 화면 색은 양쪽에서 읽히는 한 벌(`app/common/theme.py` — 테마를 바꿔도 다시 그려지지 않으므로 테마별 색 금지). 점검 대상은 정비 구역(강남·강북, 한강 기준 임의) → 자치구, 최근 7일 신고 자전거(`reported_recent`)는 점검 권장에서 뺀다. 신고되면 대체로 대여가 막힌다(신고 뒤 대여 없음 = 수리 대기로 보임). `serving/*.parquet`만 읽는다. 실행 `streamlit run app/admin/Home.py --server.port 8501`, `streamlit run app/citizen/app.py --server.port 8502`. 시험 `streamlit.testing.v1.AppTest` |
-| `py/common.py`, `py/panel_sql.py`, `py/jobs/*.py` | 단계 3A 운영 파이프라인(`actuals.py` = 일 × 자치구 실적·주별 실적·예측 실적): 수집(대여이력·고장신고·날씨·대여소), 헛대여 경보, 매일(주별 요약·패널·품질·bike_card)·매주(위험 점수·주간 예측) 갱신, 스냅샷 발행(`serving/`). 운영 DB `data/db/ops.duckdb`(분석 DB와 별도). 절차·스케줄 `docs/pipeline.md` |
-| `py/risk_alert.py`, `py/risk_interpret.py`, `py/risk_freeze.py` | 2B-5 헛대여 경보 검증, 2B-4 해석 모형(음이항 IRR·Cox), 2B-6 고정(`risk_spec.json`)과 테스트(`--test`, **사람 승인 뒤 한 번만**) |
-| `py/risk_lgb.py` | 단계 2B-3 LightGBM 포아송 + km offset(전체 + 부품별). 모형 `output/models/risk_*.txt`, 검증 설정 `risk_spec_valid.json` |
-| `py/risk_eval.py` | 단계 2B 평가 함수(precision@K, lift)·베이스라인·분할(학습 2024-01 ~ 2025-06 / 검증 2025-07 ~ 12 / 테스트 2026 ~). `load_panel()`은 기본으로 테스트 행을 돌려주지 않는다 |
-| `docs/notes/01~06` | 단계별 메모(전처리·EDA·모델 설계·레짐 원인·개체 패널·위험 모형): 무엇을 어떻게 왜 처리했는지. **처리나 결정이 생기면 갱신한다** |
+| `docs/notes/01~06` | 단계별 메모(전처리·EDA·모델 설계·레짐 원인·개체 패널·위험 모형). **처리나 결정이 생기면 갱신한다** |
+| `docs/report_stage1.md`, `docs/risk_model_card.md`, `docs/proposal/proposal_draft.md` | 단계 1 보고서 초안, 위험 모형 카드, 서울시 제안 초안 |
+| `docs/pipeline.md`, `docs/panel_dictionary.md`, `docs/load_log.csv` | 운영 파이프라인 작업표·스케줄·복구, 패널 변수 사전, 대여이력 적재 기록 |
 | `docs/phase0_result.md`, `docs/schema_map.csv` | 단계 0 결과, 열 이름 대응표 |
-| `docs/reference/01~06` | 1차 분석 검토, 변수 실증, 설계 쟁점, 타당성 검토(출처 포함) |
-| `docs/reference/07~10` | 신고율 변화 원인 조사, 외부환경 타임라인, 조사자료 검증, 외부요인 정리 |
-| `docs/reference/08a_대시보드_화면설계.md` | 대시보드 화면 설계(사람 작성, 2026-10-08). 08 문서와 다르면 이것을 따른다 |
-| `docs/reference/04b_레짐_원인_분석.md` | 레짐 원인 사후 분석 계획(사람 작성, 2026-10-07 검토 반영). 예측 모형 선택에는 쓰지 않는다 |
-| `py/prep.py`, `py/seoul_api.py` | 공용 함수(인코딩·파일 읽기, 서울 열린데이터 API) |
-| `py/use_daily.py`, `py/rent_history_daily.py`, `py/bike_month.py`, `py/failure_gaps.py` | 대용량 원본을 날짜별·자전거별 합계로 줄이는 스크립트, 고장신고 빠진 날 API 수집. 결과는 `data/interim/`, `data/raw/failure_api/` |
-| `notebooks/` | `00_사전검증`, `1A_Build_master`(마스터 생성·검증), `1A_regime`(레짐 점검), `1A_eda`(EDA, 시작 전) |
-| `data/raw/external/` | `events.csv`(외부 사건 날짜·출처), `fleet.csv`(공식 운영 대수. 참고용, 변수로는 쓰지 않음) |
-| `data/processed/` | `daily_master_v2`(3,834일 × 75열), `fail_std`(정리한 고장신고) |
-| `output/tables/`, `output/figures/` | 검증표, 레짐 점검 표·그림 |
+| `docs/reference/01~10`, `04b`, `08a` | 1차 분석 검토·조사 자료, 레짐 원인 분석 계획(04b), 대시보드 화면 설계(08a, 08 문서와 다르면 이것을 따른다) |
+
+**코드 (`py/`)**
+
+| 경로 | 내용 |
+|---|---|
+| `prep.py`, `seoul_api.py` | 인코딩·파일 읽기, 서울 열린데이터 API |
+| `use_daily.py`, `rent_history_daily.py`, `bike_month.py`, `failure_gaps.py` | 1A: 원본을 날짜별·자전거별로 합산, 고장신고 빠진 날 API 수집 |
+| `nbreg.py` | 1B: 음이항 회귀 |
+| `fc.py`, `fc_models.py`, `fc_dl.py`, `fc_expo.py`, `kma_forecast.py`, `weather_forecast.py`, `fc_posthoc.py`, `report_figs.py` | 1C: 예측 과제·모형·대여량 모형·기상청 예보 정리(JMA는 참고)·부록 B 사후 분석·보고서 그림 |
+| `day_signal.py`, `rc_*.py` | 04b 레짐 원인 사후 분석. 결과는 `docs/notes/04` |
+| `db.py`, `21_rent_to_parquet.py` ~ `29_panel.py`, `panel_sql.py` | 2A: 대여이력 적재 → 정제 → 대여소·고도 → 날씨 → 군집 → 통행 테이블 → 신고 결합 → 자전거×주 패널. **같은 원본을 두 번 적재하면 중복** |
+| `risk_eval.py`, `risk_lgb.py`, `risk_interpret.py`, `risk_alert.py`, `risk_freeze.py` | 2B: 평가·베이스라인, LightGBM 포아송 + km offset, 해석 모형, 헛대여 경보 검증, 설정 고정·테스트(`--test`는 **사람 승인 뒤 한 번만**) |
+| `fc_ops.py`, `fc_ops_fit.py`, `holidays.py` | 3A 주간 부품 예측(신고율 × 대여량 예측, 예보판·달력판), 대여량 모형 고정·재현 확인, 공휴일 표 받기 |
+| `common.py`, `jobs/*.py` | 3A 운영 파이프라인: 수집(대여이력·고장신고·날씨·대여소), 경보, 매일(`daily.py`, 실적은 `actuals.py`)·매주(`weekly.py`) 갱신, 스냅샷 발행(`serving/`). 운영 DB `data/db/ops.duckdb` |
+
+**앱·배포·노트북·데이터**
+
+| 경로 | 내용 |
+|---|---|
+| `app/admin/`, `app/citizen/`, `app/common/` | 3B 대시보드: 관리자 앱(한눈에 보기·부품별 고장 예측·점검 대상) 8501, 시민 조회 8502. `serving/*.parquet`만 읽는다. 테마는 `.streamlit/config.toml` |
+| `deploy/` | 서버 1대 배포(설치 스크립트, systemd 타이머, Caddy) |
+| `notebooks/` | `00_사전검증`, `1A_Build_master`, `1A_regime`, `1A_eda`, `1B_regression`, `1C_forecast`, `1C_test` |
+| `data/raw/external/` | `events.csv`(외부 사건 날짜·출처), `fleet.csv`(공식 운영 대수, 참고용) |
+| `data/processed/` | `daily_master_v2`(3,834일 × 75열, 깃에 있음), `fail_std`, `rent/`·`rent_2021/`(대여이력 상세), `panel/bike_week.parquet` |
+| `output/tables/`, `output/figures/`, `output/models/` | 표·그림(보고서 숫자는 여기서만 인용), 모형 파일·설정(`selection.csv`, `risk_spec.json`) |
 
 ## 8. 커밋과 푸시
 
 - **단계 하나를 끝내고, 사람이 결과를 검토해 최종본으로 확정한 뒤에 커밋하고 푸시한다**(사람의 지시, 2026-10-05). AI가 작업을 끝냈다고 바로 하지 않는다. 결과를 보고하고, 사람이 "확정" 또는 "푸시해"라고 한 뒤에 한다. "단계 하나"는 런북의 절 단위(예: 1A-6 EDA, 체크포인트 판정, 1B)다.
 - 커밋 전에 `docs/STATUS.md`, `docs/notes/`, `docs/decision_log.md`가 그 단계 내용으로 갱신됐는지 확인한다.
 - 메시지는 `[단계] 한 일 요약` 형식. 예: `[1A] 일별 대여건수 파일 점검, 반납내역 제외`.
-- `data/`(예외: `data/processed/daily_master_v2.*`, `data/raw/external/`), `.env`, `.venv/`가 스테이징되지 않았는지 `git status`로 먼저 확인한다. 인증키가 노트북 출력이나 문서에 들어가지 않았는지도 확인한다.
+- `data/`(예외: `data/processed/daily_master_v2.*`, `data/raw/external/`, `data/raw/calendar/`), `.env`, `.venv/`가 스테이징되지 않았는지 `git status`로 먼저 확인한다. 인증키가 노트북 출력이나 문서에 들어가지 않았는지도 확인한다.
 - 원격 저장소: GitHub 비공개 저장소(`origin`, 브랜치 `main`).

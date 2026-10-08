@@ -15,7 +15,7 @@ git clone git@github.com:Junyeop-Shin/dareungi.git ~/dareungi      # 비공개 �
 cd ~/dareungi && bash deploy/setup.sh                                 # 파이썬·venv·requirements·Caddy·systemd
 nano .env                                                             # SEOUL_API_KEY=..., DATA_GO_KR_KEY=..., (선택) ALERT_WEBHOOK=...
 ```
-맥북에서 한 번 옮길 것(깃에 없음): `data/interim/station_master.csv`, `data/interim/station_cluster.csv`, `data/raw/calendar/holidays_2016_2026.csv`,
+맥북에서 한 번 옮길 것(깃에 없음): `data/interim/station_master.csv`, `data/interim/station_cluster.csv`,
 그리고 운영 DB 초기 표(`init_ops.py`가 만든 `bw_usage`·`bw_fail`·`bike_info`·`station_base`·`wx_w`·`station_cluster`) — 맥북의 `data/db/ops.duckdb`를 그대로 복사하는 것이 가장 쉽다(분석 DB 19GB는 옮기지 않는다).
 ```bash
 scp data/db/ops.duckdb data/interim/station_master.csv data/interim/station_cluster.csv <서버>:~/dareungi/...   # 경로 맞춰서

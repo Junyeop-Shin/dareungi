@@ -1,16 +1,21 @@
-"""매주 갱신 — 단계 3A-5 (런북 07). 매주 월요일 07:30 (daily.py 뒤)
+"""매주 갱신(런북 07, 3A-5). 매주 월요일 07:30, daily.py 뒤에 돈다.
 
-[무엇을]
-  1. score_risk: 가장 최근 **완결된 주**의 패널(panel_latest)에 고정된 위험 모형(output/models/risk_spec.json, risk_*_final.txt)을 적용한다.
-       위험률(1,000km당, 보정 배율 적용), 기대 신고 수(위험률 × 최근 4주 평균 km), 그 주 백분위와 등급(점검 권장 95% / 주의 80% / 보통 50%),
-       위험을 '높인' 변수 3개의 이유 문구(SHAP), 마지막 반납 대여소·자치구. 체크포인트 H(2B): 공단 화면용. 시민 화면은 등급·이유만.
-       순위 규칙(risk_spec): 최근 4주 주행이 0인 자전거는 위험률 순위에서 제외(등급 '산정 제외').
-  2. forecast_weekly: 부품별 다음 7일 신고 예측 = 구조 나이브(최근 4주 신고율 × 지난주 대여량, 1C 테스트에서 가장 안정적이었던 것).
-       원천은 actuals.py의 daily_district(2023-07 ~ 어제, 파일 + API). 80% 구간은 forecast_track의 과거 오차 분포로 보정.
-       1C 선택 모형(음이항)은 기상청 중기예보 API 승인 뒤 붙인다(단기예보만으로는 3 ~ 6일 뒤 날씨가 없다).
+  1. score_risk: 가장 최근 완결 주의 패널(panel_latest)에 고정해 둔 위험 모형(output/models/risk_spec.json,
+     risk_*_final.txt)을 적용한다. 자전거마다 1,000km당 위험률(보정 배율 적용), 기대 신고 수(위험률 × 최근 4주 평균 km),
+     그 주 백분위와 등급(점검 권장 95% / 주의 80% / 보통 50%), 위험을 높인 변수 3개의 이유 문구(SHAP),
+     마지막 반납 대여소·자치구를 붙인다. 공단 화면은 이걸 다 쓰고, 시민 화면은 등급·이유만 쓴다.
+     최근 4주 주행이 0인 자전거는 순위에서 빼고 등급을 '산정 제외'로 둔다.
+  2. forecast_weekly: 부품별 다음 7일 신고 = 최근 4주 신고율 × 대여량 예측(py/fc_ops.py).
+     대여량은 기상청 예보로 예측한 값(예보판, 1C의 S1_B)을 보여 주고, 예보가 하루라도 비면 달력만으로 예측한 값
+     (달력판)으로 대신한다. 두 값은 매주 pred_kma, pred_cal에 같이 남긴다. 원천은 daily_district(actuals.py),
+     fcst_archive(collect_wx.py). 80% 구간은 2024 검증 구간 오차로 고정한 값(output/models/fc_ops_spec.json).
   3. 스냅샷 발행.
-[출력] ops.duckdb: bike_risk_latest, forecast_weekly; serving/bike_risk_latest.parquet, forecast_weekly.parquet
-[실행] .venv/bin/python py/jobs/weekly.py
+
+주의: 2026-10-08까지는 '최근 4주 신고율 × 지난주 대여량'을 썼다. 2024 검증 구간에서 나이브보다 나빠서 바꿨다
+      (output/tables/fc_ops_replay_valid.csv). 1C에서 고른 음이항(신고율 모형)은 테스트에서 안장만 나이브를 이겨 쓰지 않는다.
+
+출력: ops.duckdb bike_risk_latest, forecast_weekly; serving/bike_risk_latest.parquet, forecast_weekly.parquet
+실행: .venv/bin/python py/jobs/weekly.py
 """
 import datetime as dt
 import json
@@ -22,6 +27,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
+import fc_ops   # noqa: E402
 from common import ROOT, alert, connect, job_lock, log_run, table_exists   # noqa: E402
 from publish import build_status, publish   # noqa: E402
 from risk_lgb import prep   # noqa: E402
@@ -79,36 +85,36 @@ def score_risk(con):
 
 
 def forecast_weekly(con, today):
-    """구조 나이브: 부품별 최근 4주 신고율 × 지난주 대여량(서울 전체). 원천은 daily_district(actuals.py, 2023-07 ~ 어제).
-    80% 구간은 forecast_track(같은 규칙으로 다시 계산한 과거 52주)의 상대오차 10% · 90% 분위로 보정한다(1C의 구간 보정과 같은 방식)."""
+    """서울 전체 부품별 다음 7일 예측. 반환: (일별 실적 일수, 산출 여부, 보여 준 방식)"""
     con.execute("CREATE TABLE IF NOT EXISTS forecast_weekly (issue_date DATE, part VARCHAR, method VARCHAR, pred DOUBLE, lo80 DOUBLE, hi80 DOUBLE, note VARCHAR)")
+    for col in ("pred_kma", "pred_cal"):
+        con.execute(f"ALTER TABLE forecast_weekly ADD COLUMN IF NOT EXISTS {col} DOUBLE")
     con.execute("DELETE FROM forecast_weekly WHERE issue_date = ?", [today])
+    ins = "INSERT INTO forecast_weekly (issue_date, part, method, pred, lo80, hi80, note, pred_kma, pred_cal) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     if not table_exists(con, "daily_district"):
         for part in PARTS.values():
-            con.execute("INSERT INTO forecast_weekly VALUES (?, ?, 'none', NULL, NULL, NULL, '일별 실적(daily_district) 없음 — actuals.py 먼저')", [today, part])
-        return 0, False
-    d = con.execute("SELECT date, sum(rentals) AS rentals, sum(reports) AS reports, sum(n_tire) AS n_tire, sum(n_chain) AS n_chain, "
-                    "sum(n_saddle) AS n_saddle, sum(n_pedal) AS n_pedal FROM daily_district GROUP BY 1 ORDER BY 1").df()
-    d["date"] = pd.to_datetime(d.date)
-    d = d.set_index("date").asfreq("D", fill_value=0)
-    t0 = pd.Timestamp(today)
-    lvl = d[(d.index >= t0 - pd.DateOffset(days=35)) & (d.index < t0 - pd.DateOffset(days=7))]
-    last = d[(d.index >= t0 - pd.DateOffset(days=7)) & (d.index < t0)]
-    tr = con.execute("SELECT * FROM forecast_track WHERE actual IS NOT NULL").df() if table_exists(con, "forecast_track") else pd.DataFrame()
-    cols = {"전체": "reports", "타이어": "n_tire", "체인": "n_chain", "안장": "n_saddle", "페달": "n_pedal"}
-    for part, col in cols.items():
-        rate = lvl[col].sum() / lvl.rentals.sum() if lvl.rentals.sum() else 0
-        pred = rate * last.rentals.sum()
-        t = tr[tr.part == part].sort_values("week").tail(52) if len(tr) else tr
-        if len(t) >= 12:
-            rel = (t.actual - t.pred) / t.pred
-            lo, hi = float(rel.quantile(0.1)), float(rel.quantile(0.9))
-            note = f"구간 = 과거 {len(t)}주 상대오차 10 ~ 90% ({lo:+.0%} ~ {hi:+.0%})"
-        else:
-            lo, hi, note = -0.2, 0.25, "구간 = 기본값(과거 실적 12주 미만)"
-        con.execute("INSERT INTO forecast_weekly VALUES (?, ?, 'S1 구조 나이브', ?, ?, ?, ?)",
-                    [today, part, pred, max(pred * (1 + lo), 0), pred * (1 + hi), "최근 4주 신고율 × 지난주 대여량. " + note])
-    return len(d), True
+            con.execute(ins, [today, part, "none", None, None, None, "일별 실적(daily_district) 없음 — actuals.py 먼저", None, None])
+        return 0, False, None
+    d = fc_ops.daily_from_district(con.execute("SELECT * FROM daily_district").df())
+    models, spec = fc_ops.load_models()
+    arch = con.execute("SELECT * FROM fcst_archive WHERE issue_ts >= ?", [today - dt.timedelta(days=4)]).df() if table_exists(con, "fcst_archive") else None
+    wx = fc_ops.kma_live(arch, today) if arch is not None and len(arch) else None
+    bad, ns = fc_ops.master_flags()
+    r = fc_ops.forecast(d, today, wx, models, spec, bad=bad, no_service=ns)
+    shown = "kma" if r["kma"] is not None else "cal"
+    note = "최근 4주 신고율 × " + ("기상청 예보로 예측한 대여량" if shown == "kma" else "달력으로 예측한 대여량(예보가 비어 대신 씀)")
+    note += ". 범위 = 2024 검증 구간 오차 10 ~ 90%"
+    if shown == "cal":
+        alert(f"주간 예측: {today} 앞으로 7일 예보가 비어 달력판으로 냈다(fcst_archive 확인)")
+    if not r["hol_known"]:
+        note += ". 공휴일 표가 이 해를 덮지 않음"
+        alert("주간 예측: 공휴일 표(data/raw/calendar)가 앞으로 7일을 덮지 않는다 — 새해 공휴일 추가 필요")
+    for p, part in PARTS.items():
+        pred = r[shown][p]
+        lo, hi = spec["intervals_80"][shown][part]
+        con.execute(ins, [today, part, f"S1 {fc_ops.METHODS[shown]}", pred, max(pred * (1 + lo), 0), pred * (1 + hi), note,
+                          r["kma"][p] if r["kma"] else None, r["cal"][p]])
+    return len(d), True, shown
 
 
 def run():
@@ -119,12 +125,12 @@ def run():
             if not table_exists(con, "panel_latest"):
                 raise RuntimeError("panel_latest 없음 — daily.py 먼저")
             wk, n, grades = score_risk(con)
-            days, done = forecast_weekly(con, today)
+            days, done, shown = forecast_weekly(con, today)
             build_status(con)
             for t in ("bike_risk_latest", "forecast_weekly", "forecast_track", "data_status"):
                 publish(con, t)
-            log_run(con, "weekly", "ok", f"점수 주 {wk} {n}대, 예측 {'산출' if done else '대기'}")
-            print(f"weekly: 위험 점수 {wk} 주, {n:,}대"); print(grades.to_string(index=False)); print(f"주간 예측: {'산출' if done else '대기'}"); print(con.sql("SELECT part, round(pred) pred, round(lo80) lo, round(hi80) hi, note FROM forecast_weekly WHERE issue_date = (SELECT max(issue_date) FROM forecast_weekly)").df().to_string(index=False))
+            log_run(con, "weekly", "ok", f"점수 주 {wk} {n}대, 예측 {fc_ops.METHODS.get(shown, '대기')}")
+            print(f"weekly: 위험 점수 {wk} 주, {n:,}대"); print(grades.to_string(index=False)); print(f"주간 예측: {fc_ops.METHODS.get(shown, '대기')}"); print(con.sql("SELECT part, round(pred) pred, round(pred_kma) kma, round(pred_cal) cal, round(lo80) lo, round(hi80) hi FROM forecast_weekly WHERE issue_date = (SELECT max(issue_date) FROM forecast_weekly)").df().to_string(index=False))
         except Exception as e:
             log_run(con, "weekly", "fail", str(e)); alert(f"weekly 실패: {e}")
             raise
