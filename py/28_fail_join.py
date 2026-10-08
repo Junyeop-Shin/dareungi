@@ -1,18 +1,21 @@
-"""고장신고 붙이기 — 단계 2A-8 (런북 05): 신고 위치(직전 반납 대여소)와 수리 추정(신고 뒤 공백)
+"""고장신고에 신고 위치와 신고 뒤 공백을 붙인다(런북 05, 2A-8).
 
-[무엇을]
-  fail      표준 고장신고(fail_std.parquet: bike, reg_ts, kind, keep)를 2023-01-01 이후만 DuckDB로
-  fail_loc  신고마다 직전 마지막 반납 대여소(last_st)와 그 시각 — "어디서 고장 났나"의 대리 지표(단계 3의 자치구 집계 전제)
-  fail_gap  신고 뒤 다음 대여까지의 공백(gap_h). 두 봉우리(몇 시간 = 계속 운행 / 며칠 = 수거·정비)에서 repaired_likely 기준을 잡는다
-[시간대 함정] reg_ts는 시간대 없는 한국 시간. 대여 기록과 그대로 비교한다. 2021-02 ~ 12의 날짜만 있는 신고는 이 기간에 없다.
-[입력]  data/processed/fail_std.parquet, DuckDB trips
-[출력]  DuckDB fail, fail_loc, fail_gap, output/tables/panel_2a8_checks.csv, panel_2a8_gap_hist.csv, panel_2a8_district.csv
-[실행]  .venv/bin/python py/28_fail_join.py   (1 ~ 2분)
+만드는 테이블:
+  fail      정리된 고장신고(fail_std.parquet의 bike, reg_ts, kind, keep) 중 2023-07-01 이후
+  fail_loc  신고 직전 마지막 반납 대여소(last_st)와 반납 시각. 고장 난 위치의 대리 지표로, 단계 3의 자치구 집계에 쓴다
+  fail_gap  신고 뒤 다음 대여까지 공백(gap_h)
+gap_h 분포는 몇 시간(계속 운행)과 며칠(수거·정비) 두 봉우리로 갈린다. 29_panel.py의 repaired_likely 기준(48시간)은
+이 분포를 보고 잡았다.
+
+주의: reg_ts는 시간대 없는 한국 시간이라 대여 기록과 그대로 비교한다. 날짜만 있는 신고(2021-02~12)는 이 기간에 없다.
+
+입력: data/processed/fail_std.parquet, DuckDB trips, station
+출력: DuckDB fail, fail_loc, fail_gap, output/tables/panel_2a8_checks.csv, panel_2a8_gap_hist.csv, panel_2a8_district.csv
+실행: .venv/bin/python py/28_fail_join.py  (1~2분)
 """
 import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 sys.path.append(str(Path(__file__).resolve().parent))

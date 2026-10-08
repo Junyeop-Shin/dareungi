@@ -1,10 +1,13 @@
-"""자전거×주 패널 SQL — 분석(py/29_panel.py)과 운영(py/jobs/daily.py)이 같은 정의를 쓰기 위한 공용 모듈
+"""자전거×주 패널 SQL. 분석(py/29_panel.py)과 운영(py/jobs/daily.py)이 같은 정의를 쓰도록 한곳에 둔다.
 
-[무엇을] 2A-9의 (1) 주별 이용 요약, (2) 주별 신고, (3)(4) 격자·누적·라벨 SQL을 문자열로 둔다.
-         운영에서는 통행 원천이 trips_seq(파일)가 아니라 trips_live_x(API)라 원천 표 이름을 바꿔 넣는다.
-[주의]  정의를 바꾸면 분석 패널(bike_week.parquet)과 운영 패널이 어긋난다. 바꿀 때는 둘 다 다시 만든다.
+2A-9의 주별 이용 요약(BW_USAGE_SELECT), 주별 신고(BW_FAIL_SELECT), 격자(PANEL0_SQL), 누적·라벨(PANEL_SQL)을
+문자열로 갖고 있다. 운영에서는 통행 원천이 trips_seq(파일)가 아니라 trips_live_x(API)라서 {src} 자리에
+원천 테이블 이름을 넣어 쓴다.
+
+주의: 정의를 바꾸면 분석 패널(bike_week.parquet)과 운영 패널이 어긋난다. 바꾸면 둘 다 다시 만든다.
 """
-CLUSTER_K = 5
+CLUSTER_K = 5     # 대여소 군집 수(station_cluster.csv의 cluster_k5)
+REPAIR_H = 48     # 신고 뒤 이 시간 이상 대여가 없으면 수거·정비된 것으로 본다(2A-8 gap_h 분포)
 
 BW_USAGE_SELECT = """
 SELECT bike_id, CAST(date_trunc('week', rent_dt) AS DATE) AS wk,
@@ -25,7 +28,7 @@ SELECT bike_id, CAST(date_trunc('week', reg_ts) AS DATE) AS wk,
   count(DISTINCT reg_ts) AS n_rep,
   sum(CASE WHEN kind = '타이어' THEN 1 ELSE 0 END) AS n_tire, sum(CASE WHEN kind = '체인' THEN 1 ELSE 0 END) AS n_chain,
   sum(CASE WHEN kind = '안장' THEN 1 ELSE 0 END) AS n_saddle, sum(CASE WHEN kind = '페달' THEN 1 ELSE 0 END) AS n_pedal,
-  max(CASE WHEN gap_h >= 48 OR gap_h IS NULL THEN 1 ELSE 0 END) AS repaired_likely
+  max(CASE WHEN gap_h >= {repair_h} OR gap_h IS NULL THEN 1 ELSE 0 END) AS repaired_likely
 FROM {src} {extra_where} GROUP BY ALL"""
 
 PANEL0_SQL = """

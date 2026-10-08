@@ -1,15 +1,18 @@
-"""개체 위험 모형의 평가 함수와 베이스라인 — 단계 2B-2 (런북 06)
+"""자전거 위험 모형의 평가 함수와 베이스라인(런북 06, 2B-2).
 
-[무엇을]
-자전거×주 패널(bike_week.parquet)에서 "다음 주 신고될 자전거를 얼마나 잘 고르는가"를 잰다.
-  precision@K : 주마다 점수 상위 K대 중 다음 주에 신고된 비율. K는 예방 점검 여력(주 500 ~ 2,000대)
-  recall@K    : 그 주 신고된 자전거 중 상위 K대에 들어온 비율
-  lift@f      : 점수 상위 f(5%·20%)의 "1km당 신고율" ÷ 전체 1km당 신고율 (다음 주에 탄 자전거만). 노출을 뺀 '위험률' 관점
-베이스라인(모형이 넘어야 할 것): B0 무작위, B1 노출만(km_4w), B2 마지막 신고 이후 km, B3 최근 13주 신고, B4 최근 2주 헛대여
-[분할] 학습 2024-01-01 ~ 2025-06-30 / 검증 2025-07-01 ~ 12-31 / 테스트 2026-01-01 ~ (06 문서 2B-1). 테스트는 사람 승인 뒤 한 번만.
-[입력]  data/processed/panel/bike_week.parquet
-[출력]  output/tables/risk_eval_valid.csv (베이스라인 행. 모형 결과는 같은 표에 행을 더한다)
-[실행]  .venv/bin/python py/risk_eval.py
+자전거×주 패널에서 "다음 주에 신고될 자전거를 얼마나 잘 골라내는가"를 잰다.
+  precision@K  주마다 점수 상위 K대 중 다음 주에 신고된 비율. K는 주당 점검 여력(500~2,000대)
+  recall@K     그 주 신고된 자전거 중 상위 K대에 든 비율
+  lift@f       점수 상위 f(5%, 20%)의 1km당 신고율 / 전체 1km당 신고율. 다음 주에 탄 자전거만 본다.
+               이용량 효과를 뺀 위험률 기준
+베이스라인은 B0 무작위, B1 최근 4주 km, B2 마지막 신고 이후 km, B3 최근 13주 신고, B4 최근 2주 헛대여다.
+
+구간은 학습 2024-01-01 ~ 2025-06-30, 검증 2025-07-01 ~ 12-31, 테스트 2026-01-01 ~.
+load_panel()은 기본으로 테스트 행을 빼고 돌려준다. 테스트 채점은 risk_freeze.py --test에서 한 번만 한다.
+
+입력: data/processed/panel/bike_week.parquet
+출력: output/tables/risk_eval_valid.csv (베이스라인 행. risk_lgb.py가 모형 행을 더한다), risk_split_info.csv
+실행: .venv/bin/python py/risk_eval.py
 """
 from pathlib import Path
 
@@ -22,7 +25,7 @@ KS = (500, 1000, 2000)
 
 
 def load_panel(include_test=False):
-    """패널을 읽고 split 열을 붙인다. 테스트 구간 행은 include_test=True일 때만 돌려준다"""
+    """패널을 읽고 split 열(train/valid/test)을 붙인다. 테스트 행은 include_test=True일 때만 포함"""
     p = pd.read_parquet(ROOT / "data/processed/panel/bike_week.parquet")
     p["wk"] = pd.to_datetime(p.wk)
     p["split"] = np.select([p.wk.between(*SPLITS["train"]), p.wk.between(*SPLITS["valid"])], ["train", "valid"], "test")
@@ -47,7 +50,7 @@ def rate_lift(df, score, frac):
 
 
 def evaluate(df, score):
-    """점수 열 하나를 모든 지표로. 결측 점수는 최하위로 둔다"""
+    """점수 열 하나에 대해 lift·precision·recall을 모두 계산한다. 결측 점수는 꼴찌로 둔다"""
     d = df.assign(**{score: df[score].fillna(-np.inf)})
     r = {"lift@5%": rate_lift(d, score, 0.05), "lift@20%": rate_lift(d, score, 0.20)}
     for K in KS:

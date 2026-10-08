@@ -1,20 +1,21 @@
-"""개체 위험 모형 — 단계 2B-3: LightGBM 포아송 + 주행거리 offset (런북 06)
+"""자전거 위험 모형: LightGBM 포아송 + 주행거리 offset(런북 06, 2B-3).
 
-[무엇을]
-자전거×주 패널에서 "다음 주 신고 건수"를 포아송으로 학습하되, 다음 주 주행거리의 로그를 offset(init_score)으로 넣는다.
-그러면 모형은 "얼마나 탈까"가 아니라 **1km당 신고율(위험률)**만 배운다. 예측에는 offset이 들어가지 않으므로
-  risk_rate  = exp(raw_score) × 1,000  : 다음 주 1,000km당 기대 신고 수(점검 우선순위의 기본값)
-  risk_count = exp(raw_score) × 최근 4주 평균 km : 다음 주 기대 신고 수(수거 관점)
-전체 모형 1개 + 부품별(타이어·체인·안장·페달) 4개.
-[규칙]
-  - 학습 2024-01 ~ 2025-06, 검증 2025-07 ~ 12. 조기 종료·하이퍼파라미터·보정은 검증으로만. 테스트(2026 ~)는 읽지 않는다(load_panel 기본).
-  - 학습·검증의 '학습 행'은 다음 주 주행이 있는 행(km_next > 0)만(offset이 정의되려면). 순위 채점은 그 주의 모든 자전거로.
-  - km_next·repaired_likely는 설명변수에 넣지 않는다(라벨 쪽 정보). last_repaired는 공백이 끝난 뒤부터만 값이 있다.
-  - 하이퍼파라미터 격자(num_leaves × min_data_in_leaf)는 전체 모형에서 prec@1000으로 고르고, 부품 모형은 그 설정을 쓴다.
-[입력]  data/processed/panel/bike_week.parquet, py/risk_eval.py
-[출력]  output/models/risk_{all,tire,chain,saddle,pedal}.txt, output/tables/risk_eval_valid.csv(행 추가), risk_grid_all.csv,
-        risk_shap_valid.csv(변수별 평균 |기여|), risk_calibration_valid.csv(10분위 보정 곡선), risk_calibration_scale.csv
-[실행]  .venv/bin/python py/risk_lgb.py   (약 10 ~ 20분)
+자전거×주 패널에서 다음 주 신고 수를 포아송으로 학습하고, 다음 주 주행거리의 로그를 offset(init_score)으로 준다.
+그러면 모형은 얼마나 탈지가 아니라 1km당 신고율만 배운다. 예측에는 offset이 들어가지 않으므로 점수는 두 가지로 낸다.
+  risk_rate   exp(raw_score) × 1,000          다음 주 1,000km당 기대 신고 수. 점검 우선순위 기본값
+  risk_count  exp(raw_score) × 최근 4주 평균 km  다음 주 기대 신고 수. 수거 관점
+전체 모형 하나와 부품별(타이어, 체인, 안장, 페달) 모형 넷을 만든다.
+
+  - 조기 종료, 하이퍼파라미터, 보정 배율은 검증 구간(2025-07~12)으로만 정한다. 테스트 행은 읽지 않는다.
+  - offset이 있어야 하므로 학습 행은 다음 주 주행이 있는 행(km_next > 0)만 쓴다. 순위 채점은 그 주의 전체 자전거로 한다.
+  - km_next·repaired_likely는 다음 주 정보라 설명변수로 쓰지 않는다. last_repaired는 공백이 끝난 뒤부터만 값이 있어 쓸 수 있다.
+  - num_leaves × min_data_in_leaf 격자는 전체 모형의 prec@1000으로 고르고, 부품 모형도 같은 값을 쓴다.
+
+입력: data/processed/panel/bike_week.parquet
+출력: output/models/risk_{all,tire,chain,saddle,pedal}.txt, risk_spec_valid.json,
+      output/tables/risk_eval_valid.csv(모형 행 추가), risk_grid_all.csv, risk_shap_valid.csv(변수별 평균 |기여|),
+      risk_calibration_valid.csv(10분위 보정)
+실행: .venv/bin/python py/risk_lgb.py  (10~20분)
 """
 import json
 import sys
@@ -56,7 +57,7 @@ def prep(df):
 
 
 def fit(tr, va, target, num_leaves, min_data, rounds=5000):
-    """offset = log(km_next). 검증으로 조기 종료. 돌려주는 것: 모형"""
+    """offset = log(km_next)로 학습하고 검증 손실로 조기 종료한 모형을 돌려준다"""
     dtr = lgb.Dataset(tr[FEATS], label=tr[target], init_score=np.log(tr.km_next), categorical_feature=["bike_type"], free_raw_data=False)
     dva = lgb.Dataset(va[FEATS], label=va[target], init_score=np.log(va.km_next), reference=dtr)
     params = {**BASE, "num_leaves": num_leaves, "min_data_in_leaf": min_data}
@@ -64,7 +65,7 @@ def fit(tr, va, target, num_leaves, min_data, rounds=5000):
 
 
 def score(model, df):
-    """순위 점수 두 개. offset은 예측에 안 들어간다 → raw_score = log(1km당 신고율)"""
+    """(risk_rate, risk_count). 예측에는 offset이 없으므로 raw_score = log(1km당 신고율)"""
     raw = model.predict(df[FEATS], raw_score=True)
     return np.exp(raw) * 1000, np.exp(raw) * df.km_4w.to_numpy() / 4
 
@@ -89,7 +90,7 @@ def main():
     best = grid.sort_values("prec@1000", ascending=False).iloc[0]
     nl, md = int(best.num_leaves), int(best.min_data_in_leaf)
 
-    # 2) 전체 + 부품별 최종(검증 기준) 모형
+    # 2) 고른 설정으로 전체·부품별 모형
     shap_rows, cal_rows, spec = [], [], {"features": FEATS, "num_leaves": nl, "min_data_in_leaf": md, "models": {}}
     for name, target in TARGETS.items():
         m = fit(tr, va, target, nl, md)
@@ -108,12 +109,12 @@ def main():
         g["pred_per_1000km"] = g.pred_rate / g.km * 1000; g["actual_per_1000km"] = g.y / g.km * 1000
         cal_rows.append(g.reset_index().assign(model=name)[["model", "dec", "n", "pred_per_1000km", "actual_per_1000km"]])
         spec["models"][name] = {"file": f"risk_{name}.txt", "best_iteration": m.best_iteration, "calibration_scale": scale}
-        # SHAP(기여도) — LightGBM 내장
+        # 변수별 기여도(LightGBM pred_contrib = SHAP 값)
         samp = vv.sample(min(200_000, len(vv)), random_state=42)
         contrib = m.predict(samp[FEATS], pred_contrib=True)[:, :-1]
         shap_rows.append(pd.DataFrame({"model": name, "feature": FEATS, "mean_abs_contrib": np.abs(contrib).mean(axis=0)}))
         print(f"{name}: iter={m.best_iteration} scale={scale:.3f} prec@1000 rate={results.loc[f'LGB {name} 위험률','prec@1000']:.4f} count={results.loc[f'LGB {name} 기대 신고 수','prec@1000']:.4f}", flush=True)
-        # 부품 모형의 베이스라인(같은 라벨로)도 표에
+        # 부품 모형은 같은 부품 라벨로 베이스라인도 채점한다
         if name != "all":
             for bname, col in BASELINES[2:]:
                 results.loc[f"{bname} [{name}]"] = evaluate(v.assign(y_next=v.y), col)

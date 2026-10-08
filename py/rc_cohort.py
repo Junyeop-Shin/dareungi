@@ -1,19 +1,23 @@
-"""레짐 원인 사후 분석 R7 — 자전거 코호트(처음 등장 시기 ≈ 프레임 형태)별 신고율과 폐기 기준
+"""레짐 원인 사후 분석 R7: 자전거 코호트(처음 등장 시기, 대략 프레임 형태)별 신고율과 폐기 기준.
 
-[무엇을·왜]
 2025년 신고 감소가 특정 코호트(오래된 L자형 프레임 등)에 몰려 있으면 하드웨어 교체·폐기(구성 효과)이고,
-모든 코호트에서 비슷하게 줄었으면 신고 쪽(성향·경로)이다. 안장은 "안장 아래 프레임 균열"이 안장 신고로 들어왔을 수 있어
-코호트별로 따로 본다. 폐기 기준(도입 6년 + 대여 3,000회 이상)에 도달한 자전거와 아닌 자전거도 비교한다.
+모든 코호트에서 비슷하게 줄었으면 신고 쪽(성향·경로) 변화다. 안장 아래 프레임 균열이 안장 신고로 들어왔을
+수 있어 안장도 코호트별로 따로 본다. 폐기 기준(도입 6년 + 대여 3,000회 이상)에 도달한 자전거와 아닌
+자전거도 비교한다.
 
-[코호트 정의 — 자전거번호가 처음 나타난 시기]
-  ~2019          옛 번호를 그대로 쓰는 자전거 (실제 도입 연도)
-  2020 ~ 2022-02 QR 단말기 교체 때 번호가 새로 붙은 것이 섞여 있어 **실제 나이를 모른다**
-  2022-03 ~      이후 번호는 처음 등장 = 도입으로 믿을 수 있다(docs/notes/02). 연도별로 나눈다
-[입력]  data/db/dareungi.duckdb 의 bike_year(2015 ~ 2023-06 요약), data/processed/rent/ (2023-07 ~ 상세), data/processed/fail_std.parquet
-[출력]  output/tables/rc_7_cohort_half.csv (코호트 × 반기: 대수, 대여, 부품별 만 건당 신고율), rc_7_cohort_ratio.csv (전년 같은 반기 대비 비),
-        rc_7_scrap_rule.csv (폐기 기준 도달 여부별 신고율), rc_7_cohort_exit.csv (코호트별 마지막 등장 = 폐기 추정)
-[실행]  .venv/bin/python py/rc_cohort.py   (약 1 ~ 2분)
-사후 분석이다. 예측 모형(1C) 선택에는 쓰지 않는다.
+코호트는 자전거번호가 처음 나타난 시기로 나눈다.
+  ~2019          옛 번호를 그대로 쓰는 자전거(실제 도입 연도)
+  2020 ~ 2022-02 QR 단말기 교체 때 번호를 새로 붙인 자전거가 섞여 실제 나이를 모른다
+  2022-03 ~      처음 등장 = 도입으로 볼 수 있다(docs/notes/02). 연도별로 나눈다
+
+사후 분석이라 예측 모형(1C) 선택에는 쓰지 않는다.
+
+입력: data/db/dareungi.duckdb의 bike_year(2015 ~ 2023-06 요약), data/processed/rent/ (2023-07 ~ 상세), data/processed/fail_std.parquet
+출력: output/tables/rc_7_cohort_half.csv   코호트 × 반기: 대수, 대여, 부품별 만 건당 신고율
+      output/tables/rc_7_cohort_ratio.csv  전년 같은 반기 대비 비
+      output/tables/rc_7_scrap_rule.csv    폐기 기준 도달 여부별 신고율
+      output/tables/rc_7_cohort_exit.csv   코호트별 마지막 등장(폐기 추정)
+실행: .venv/bin/python py/rc_cohort.py  (1~2분)
 """
 import sys
 from pathlib import Path

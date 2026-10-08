@@ -1,20 +1,19 @@
-"""대여이력(건별 원본, 약 1억 건) 적재 — 단계 2A-1 (런북 05) + 레짐 원인 분석용 2020-21 상세(04b R3)
+"""대여이력 원본(건별, 약 1억 건)을 DuckDB 요약과 Parquet로 적재한다(런북 05, 2A-1).
 
-[무엇을]
-연도 ZIP 안의 월별 CSV를 한 달치씩 꺼내 UTF-8로 바꾼 뒤 DuckDB로 읽어
-  - 2015-09 ~ 2023-06 : 자전거별 연간 요약만(bike_year 테이블: 처음 등장일, 대여 횟수, km) — 나이·누적 사용량 추정용
-  - 2020-10 ~ 2021-09 : 상세를 data/processed/rent_2021/ 에 Parquet로(레짐 원인 분석 R3 ~ R7용. 별도 폴더에 둔다)
-  - 2023-07 ~ 2026-06 : 상세를 data/processed/rent/ 에 Parquet로(자전거×주 패널용)
-처리한 파일은 docs/load_log.csv에 적어 두어 중간에 멈춰도 다시 실행하면 이어서 한다(같은 파일을 두 번 넣으면 중복이 생긴다).
+연도별 ZIP에서 월 CSV를 한 달치씩 꺼내 UTF-8로 바꾼 뒤 기간에 따라 나눠 저장한다.
+  2015-09 ~ 2023-06  자전거별 연간 요약만 bike_year 테이블에(처음 등장일, 대여 수, km). 나이·누적 사용량 추정용
+  2020-10 ~ 2021-09  상세를 data/processed/rent_2021/에. 레짐 원인 분석(04b R3~R7)용
+  2023-07 ~ 2026-06  상세를 data/processed/rent/에. 자전거×주 패널용
+처리한 파일은 docs/load_log.csv에 남기고, 다시 실행하면 거기서부터 이어 간다.
 
-[왜 2020-21 상세를 따로 두나]
-같은 폴더에 넣으면 2A-9 패널이 2020년부터 시작하고 2021-10 ~ 2023-06 공백을 연속 주로 착각해 '마지막 신고 이후 누적'이 틀어진다.
+주의: 같은 파일을 두 번 넣으면 행이 중복된다. 2020-21 상세를 rent/에 같이 두면 2A-9 패널이
+2021-10 ~ 2023-06 공백을 연속된 주로 보고 '마지막 신고 이후 누적'이 틀어지므로 폴더를 나눴다.
 
-[입력]  data/raw/rent_history/서울특별시 공공자전거 대여이력 정보_<연도>.zip (2015 ~ 2025), ..._26MM.csv (2026)
-        열 17개(2026년은 자전거구분 없는 16개), cp949. 날짜 형식 'YYYY-MM-DD HH:MM:SS'
-[출력]  data/db/dareungi.duckdb 의 bike_year 테이블, data/processed/rent/y=…/m=…/*.parquet, data/processed/rent_2021/…, docs/load_log.csv
-[실행]  .venv/bin/python py/21_rent_to_parquet.py            (저장소 루트, 월 파일 하나에 1 ~ 3분 × 130개 → 몇 시간. 터미널에서 돌려 둔다)
-        .venv/bin/python py/21_rent_to_parquet.py 1509 1510  (특정 달만, 시험용)
+입력: data/raw/rent_history/서울특별시 공공자전거 대여이력 정보_<연도>.zip (2015~2025), ..._26MM.csv (2026)
+      cp949, 17열(2026년은 자전거구분이 없는 16열), 날짜 'YYYY-MM-DD HH:MM:SS'
+출력: DuckDB bike_year, data/processed/rent/y=…/m=…/*.parquet, data/processed/rent_2021/…, docs/load_log.csv
+실행: .venv/bin/python py/21_rent_to_parquet.py            (월 파일당 1~3분 × 약 130개, 몇 시간 걸린다)
+      .venv/bin/python py/21_rent_to_parquet.py 1509 1510  (지정한 달만)
 """
 import csv
 import shutil
@@ -29,7 +28,7 @@ from prep import to_utf8        # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "data/raw/rent_history"
 LOG = ROOT / "docs/load_log.csv"
-FMT = "['%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M']"       # 날짜 형식 후보(단계 0에서 확인)
+FMT = "['%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M']"       # 대여·반납일시 형식(단계 0에서 확인)
 DETAIL_FROM = "2307"                                    # 이 달부터 상세(패널용)
 R3_RANGE = ("2010", "2109")                             # 레짐 원인 분석용 상세(별도 폴더)
 SUMMARY_UNTIL = "2023-07-01"                            # 요약은 이 날 전까지만(상세와 겹치지 않게)
@@ -61,7 +60,7 @@ def _select(csv_path, c):
 
 
 def to_parquet(csv_path, c, out):
-    """상세를 연·월 폴더로 나눠 Parquet 저장. 돌려주는 것: (저장한 행 수, 날짜를 못 읽은 행 수)"""
+    """상세를 연·월 파티션으로 Parquet에 쓴다. 반환: (저장한 행 수, 날짜 파싱 실패 행 수)"""
     con.execute(f"""
       COPY (SELECT *, year(rent_dt) AS y, month(rent_dt) AS m FROM ({_select(csv_path, c)}) WHERE rent_dt IS NOT NULL)
       TO '{(ROOT / out).as_posix()}'
@@ -84,7 +83,7 @@ def summarize_year(csv_path, c, year):
 
 
 def process(csv_path, name, c):
-    """한 달 파일을 어디로 보낼지 정해 처리한다. 돌려주는 것: 처리 방식 문자열과 행 수"""
+    """월 파일 하나를 기간에 맞는 곳(요약/상세)으로 보낸다. 반환: (처리 방식, 행 수, 날짜 실패 행 수)"""
     yymm = name[-8:-4]                                   # '..._2306.csv' → '2306'
     how, rows = [], {}
     if yymm < DETAIL_FROM:
@@ -119,11 +118,11 @@ def _zip_name(info):
 
 
 def main(only=None):
-    """only: 처리할 YYMM 목록(없으면 전부). 이미 load_log에 있는 파일은 건너뛴다"""
+    """only: 처리할 YYMM 집합(None이면 전부). load_log에 있는 파일은 건너뛴다"""
     done = done_set()
     tmp = ROOT / "data/interim/rent_csv"; tmp.mkdir(parents=True, exist_ok=True)
     raw, utf = tmp / "month_raw.csv", tmp / "month_utf8.csv"
-    jobs = []                                            # (표시 이름, 원본을 raw로 복사하는 함수, 열 묶음)
+    jobs = []                                            # (파일 이름, 원본 위치, 열 대응표)
     for z in sorted(RAW.glob("*.zip")):
         with zipfile.ZipFile(z) as zf:
             for info in zf.infolist():
@@ -140,7 +139,7 @@ def main(only=None):
         if isinstance(src, tuple):
             z, info = src
             with zipfile.ZipFile(z) as zf, zf.open(info) as s, open(raw, "wb") as d:
-                shutil.copyfileobj(s, d)                 # 한 달치만 디스크에
+                shutil.copyfileobj(s, d)                 # 디스크에는 한 달치만 풀어 둔다
             to_utf8(raw, utf); raw.unlink()
         else:
             to_utf8(src, utf)

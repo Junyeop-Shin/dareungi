@@ -1,7 +1,8 @@
-"""서울 열린데이터광장 Open API 호출 도우미 (01 문서 0-1)
+"""서울 열린데이터광장 Open API 호출 도우미(01 문서 0-1).
 
-노트북에서:  import sys; sys.path.append("../py");  from seoul_api import seoul_get, seoul_all
-인증키는 프로젝트 폴더의 .env (SEOUL_API_KEY=...)에서 읽는다. 코드에 키를 쓰지 않는다.
+인증키는 프로젝트 폴더의 .env에 있는 SEOUL_API_KEY를 쓴다.
+
+사용: import sys; sys.path.append("../py"); from seoul_api import seoul_get, seoul_all
 """
 import os
 import time
@@ -11,14 +12,16 @@ import pandas as pd
 import requests
 from dotenv import load_dotenv
 
-# 이 파일(py/seoul_api.py) 기준 한 단계 위 = 프로젝트 폴더의 .env
+# 프로젝트 폴더(py/의 상위)의 .env
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 SEOUL = "http://openapi.seoul.go.kr:8088"
 
 
 def _body(js, service):
     """응답에서 데이터 본문을 찾는다.
-    서비스 이름과 응답 키가 다른 API가 있다(예: bikeList → rentBikeStatus)"""
+
+    서비스 이름과 응답 키가 다른 API가 있어서(bikeList → rentBikeStatus) RESULT가 든 dict를 찾는다.
+    """
     if service in js:
         return js[service]
     return next((v for v in js.values() if isinstance(v, dict) and "RESULT" in v), None)
@@ -38,8 +41,10 @@ def seoul_get(service, start=1, end=1000, *params):
 
 
 def seoul_all(service, *params):
-    """전체 페이지를 모아 DataFrame으로.
-    주의: tbCycleFailureReport의 날짜 파라미터는 '그날부터 약 30일치'를 돌려준다(단계 0 확인)"""
+    """전체 페이지를 모아 DataFrame으로 돌려준다.
+
+    주의: tbCycleFailureReport에 날짜를 넘기면 그날부터 약 30일치가 온다.
+    """
     first = seoul_get(service, 1, 1000, *params)
     rows = list(first["rows"])
     for s in range(1001, first["total"] + 1, 1000):

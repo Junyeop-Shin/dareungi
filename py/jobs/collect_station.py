@@ -1,9 +1,11 @@
-"""대여소 수집 — 단계 3A-4 (런북 07). 매주 월요일 05:00
+"""대여소 수집(런북 07, 3A-4). 매주 월요일 05:00.
 
-[무엇을] tbCycleStationInfo·bikeStationMaster를 받아 station_hist(snapshot_date, …)에 쌓고, 새 대여소에는 고도(OpenTopoData)를 붙인다.
-       최신 스냅샷을 station_live(st_no, st_id, st_name, lat, lon, district, elev_m, han_river)로 둔다(05의 station과 같은 열).
-[출력] ops.duckdb: station_hist, station_live, job_runs
-[실행] .venv/bin/python py/jobs/collect_station.py
+tbCycleStationInfo·bikeStationMaster를 받아 날짜별 스냅샷으로 station_hist에 쌓는다. 고도는 이미 아는 대여소면
+station_master.csv에서 가져오고, 새 대여소만 OpenTopoData로 받는다. 가장 최근 스냅샷은 05의 station과 같은 열로
+station_live(st_no, st_id, st_name, lat, lon, district, elev_m, han_river)에 둔다.
+
+출력: ops.duckdb station_hist, station_live, job_runs
+실행: .venv/bin/python py/jobs/collect_station.py
 """
 import datetime as dt
 import sys
@@ -14,7 +16,7 @@ import pandas as pd
 import requests
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
-from common import ROOT, alert, connect, fetch_all, job_lock, log_run, table_exists, upsert_rows   # noqa: E402
+from common import ROOT, alert, connect, fetch_all, job_lock, log_run, upsert_rows   # noqa: E402
 
 
 def elevation(df):
@@ -44,7 +46,7 @@ def run():
             bad = ~st.lat.between(37.4, 37.72) | ~st.lon.between(126.75, 127.2)
             st.loc[bad, ["lat", "lon"]] = None
             st["han_river"] = st.st_name.fillna("").str.contains("한강").astype(int)
-            # 고도: 이미 아는 대여소는 분석 DB의 station_master.csv에서, 새 대여소만 API
+            # 고도는 아는 대여소면 station_master.csv에서, 새 대여소만 API로 받는다
             known = pd.read_csv(ROOT / "data/interim/station_master.csv")[["st_id", "elev_m"]].dropna()
             st = st.merge(known, on="st_id", how="left")
             new = st[st.elev_m.isna() & st.lat.notna()]

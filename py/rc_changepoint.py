@@ -1,18 +1,20 @@
-"""레짐 원인 사후 분석 R1 — 부품별 신고율의 변화점은 언제, 같은 주에 일어났나
+"""레짐 원인 사후 분석 R1: 부품별 신고율 변화점이 언제, 같은 주에 일어났는지 찾는다.
 
-[무엇을]
-주 단위 부품별 신고율(대여 만 건당)에서 수준이 계단처럼 바뀐 시점을 찾는다. 두 창(2020-07 ~ 2022-06, 2024-01 ~ 2026-06)을
-본다. 네 부품이 같은 주에 움직였으면 공통 원인(앱·신고 경로), 한 부품만 먼저·서서히면 그 부품의 조치(체인가드 등)다.
-[어떻게]
-  1. 주 방법: 로그 신고율에서 계절(52주 주기 푸리에 2항)을 회귀로 뺀 잔차에서 ruptures Binseg(l2)로 변화점 1개를 찾는다.
-  2. 보조: 전년 같은 주 대비 로그 비(yoy)에서 변화점 2개(계단 + 52주 뒤 복귀)를 찾아 첫 번째를 적는다. 2025 창에서는
-     창 시작 부근과 2023-09 신고 누락 구간의 영향으로 흔들려서 보조로만 본다(2026-10-07 확인).
-  3. 변화 주 전후 12주의 계절 제거 신고율 평균의 비와 부트스트랩 95% 구간(주 단위로 다시 뽑기).
-  4. 방법 검증: 원인을 아는 2018-06-20(앱 개편) 급등을 2017-07 ~ 2019-06 창에서 잡아내는지.
-[입력]  data/processed/daily_master_v2.parquet
-[출력]  output/tables/rc_1_changepoints.csv, output/figures/rc_1_yoy.png
-[실행]  .venv/bin/python py/rc_changepoint.py
-사후 분석이다. 예측 모형(1C) 선택에는 쓰지 않는다.
+주 단위 부품별 신고율(대여 만 건당)에서 수준이 계단처럼 바뀐 시점을 두 창(2020-07 ~ 2022-06,
+2024-01 ~ 2026-06)에서 찾는다. 네 부품이 같은 주에 움직였으면 공통 원인(앱·신고 경로), 한 부품만 먼저
+또는 서서히 움직였으면 그 부품의 조치(체인가드 등)로 본다.
+
+  1. 로그 신고율에서 계절(52주 주기 푸리에 2항)을 회귀로 뺀 잔차에 ruptures Binseg(l2)로 변화점 1개
+  2. 보조로 전년 같은 주 대비 로그 비(yoy)에서 변화점 2개(계단 + 52주 뒤 복귀)를 찾아 첫 번째를 적는다.
+     2025 창에서는 창 시작 부근과 2023-09 신고 누락 구간 때문에 흔들려서 보조로만 본다
+  3. 변화 주 전후 12주 계절 제거 신고율 평균의 비와 부트스트랩 95% 구간(주 단위 재표집)
+  4. 원인을 아는 2018-06-20 앱 개편 급등을 2017-07 ~ 2019-06 창에서 잡는지로 방법을 검증
+
+사후 분석이라 예측 모형(1C) 선택에는 쓰지 않는다.
+
+입력: data/processed/daily_master_v2.parquet
+출력: output/tables/rc_1_changepoints.csv, output/figures/rc_1_yoy.png
+실행: .venv/bin/python py/rc_changepoint.py
 """
 from pathlib import Path
 
@@ -32,7 +34,7 @@ WINDOWS = {"2021-04 급증": ("2020-07-01", "2022-06-30"), "2025-03 하락": ("2
 
 
 def weekly_rate(m):
-    """주(월요일 시작) 단위 부품별 신고율. 운영 중단일·신고 누락 기간은 뺀다"""
+    """주(월요일 시작) 단위 부품별 신고율. 운영 중단일·신고 누락 기간 제외"""
     d = m[(m.no_service == 0) & (m.report_anomaly == 0)].set_index("date")
     w = d[["rentals"] + list(PARTS)].resample("W-MON", label="left", closed="left").sum()
     w = w[w.rentals > 0]
@@ -49,7 +51,7 @@ def deseason(lograte):
 
 
 def first_break(s, n_bkps):
-    """Binseg(l2)로 변화점을 찾아 가장 앞의 것을 돌려준다(위치 = 새 구간이 시작하는 색인)"""
+    """Binseg(l2) 변화점 중 가장 앞의 것. 반환값은 새 구간이 시작하는 인덱스"""
     s = np.asarray(s, float)
     bk = rpt.Binseg(model="l2", min_size=8).fit(s.reshape(-1, 1)).predict(n_bkps=n_bkps)
     return min(b for b in bk if b < len(s))
@@ -71,13 +73,13 @@ def main():
     rows = []
     for win, (lo, hi) in WINDOWS.items():
         for part, name in PARTS.items():
-            # 주 방법: 계절을 뺀 잔차에서 변화점 1개. (전년비 방법은 창 시작 부근과 2023-09 누락 구간의 영향으로 2025 창에서 흔들려 보조로만 둔다)
+            # 주 방법: 계절 제거 잔차의 변화점 1개. 전년비는 보조
             resid = deseason(lograte.loc[lo:hi, part].to_numpy())
             r = pd.Series(resid, index=lograte.loc[lo:hi].index).dropna()
             wk_res = r.index[first_break(r.to_numpy(), n_bkps=1)]
             y = yoy.loc[lo:hi, part].dropna()
             wk_yoy = y.index[first_break(y.to_numpy(), n_bkps=2)]
-            # 전후 비는 계절을 뺀 신고율(exp(잔차) × 창 평균)로 잰다. 변화 주가 봄·여름이면 날 것 그대로는 계절 상승이 섞이기 때문
+            # 전후 비는 계절 제거 신고율(exp(잔차) × 창 평균)로 잰다. 원래 값이면 봄·여름 계절 상승이 섞인다
             adj = np.exp(r) * np.exp(np.nanmean(lograte.loc[lo:hi, part]))
             pos = adj.index.get_loc(wk_res)
             before, after = adj.iloc[max(pos - 12, 0):pos], adj.iloc[pos:pos + 12]

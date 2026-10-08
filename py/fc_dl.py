@@ -1,22 +1,19 @@
-"""딥러닝 예측 모형(GRU) — 단계 1C에서 다른 모형과 같은 조건으로 비교한다
+"""GRU 예측 모형. 1C에서 다른 모형과 같은 조건으로 비교한다.
 
-[구조]
-  입력 1) 과거 28일의 하루하루: 신고율(로그), 대여량(로그), 평균기온, 강수(로그), 쉬는 날 여부, 요일 위치
-         → GRU(순서가 있는 자료를 앞에서부터 읽어 요약하는 신경망)가 16개 숫자로 요약
-  입력 2) 앞으로 7일의 하루하루: 쉬는 날 여부, 요일 위치, 날씨(시나리오 값), 그날 대여량 예측(로그)
-         → 7일치를 그대로 펼쳐서 사용
-  입력 3) 원점의 정보: 계절 위치, (선택) 개입·환경 변수, 목표 주의 더운 날·얼었다 녹은 날 수
-  출력   : "구조 나이브(최근 4주 신고율 × 대여량 예측) 대비 몇 배인가"의 로그
-           최종 예측 = 구조 나이브 × exp(출력)
+입력
+  past  과거 28일: 신고율(로그), 대여량(로그), 평균기온, 강수(로그), 쉬는 날, 요일(사인·코사인).
+        GRU가 16차원으로 요약한다
+  fut   앞으로 7일: 쉬는 날, 요일, 날씨(시나리오 값), 대여량 예측(로그). 7일치를 펼쳐 넣는다
+  stat  원점 정보: 계절, (선택) 개입·환경 변수, 목표 주의 hot·freeze_thaw 일수
+출력은 구조 나이브(최근 4주 신고율 × 대여량 예측) 대비 로그 배수이고, 예측 = 구조 나이브 × exp(출력)이다.
 
-[왜 '몇 배인가'를 맞히게 하나]
-학습 원점이 약 900개뿐이라, 건수를 처음부터 맞히게 하면 신경망이 수준(레짐)을 외우는 데 힘을 다 쓴다.
-수준과 이용량은 구조 나이브가 이미 알려 주므로, 신경망은 "날씨·요일 때문에 거기서 얼마나 벗어나는가"만 배우게 한다.
+학습 원점이 약 900개뿐이라 건수를 직접 맞히게 하면 수준(레짐)을 외우는 데 용량을 다 쓴다.
+수준과 이용량은 구조 나이브에 맡기고, 신경망은 날씨·요일에 따른 편차만 배우게 했다.
 
-[학습] 날씨는 실측값(시나리오 A)으로 학습하고, 예측할 때 시나리오 값을 넣는다. 검증 오차가 20번 연속 나아지지 않으면 멈춘다.
-       난수 씨앗 3개로 따로 학습해 평균한다(신경망은 씨앗에 따라 결과가 조금씩 달라진다).
+날씨는 실측값(시나리오 A)으로 학습하고 예측할 때 시나리오 값을 넣는다. 홀드아웃 오차가 20 epoch 연속
+나아지지 않으면 멈추고, 시드 3개로 학습해 평균한다.
 """
-import lightgbm  # noqa: F401  torch보다 먼저 불러야 한다. 맥에서 torch를 먼저 부르면 LightGBM 학습 때 프로세스가 죽는다(두 라이브러리의 OpenMP 충돌)
+import lightgbm  # noqa: F401  torch보다 먼저 import해야 한다. 맥에서 torch가 먼저면 LightGBM 학습 때 프로세스가 죽는다(OpenMP 충돌)
 import numpy as np
 import pandas as pd
 import torch
@@ -24,15 +21,15 @@ from torch import nn
 
 from fc import INTERVENTIONS
 
-# 스레드를 1개로 고정한다. LightGBM을 학습한 뒤 같은 프로세스에서 torch를 여러 스레드로 돌리면 맥에서 멈춘다(OpenMP 충돌).
-# 자료가 작아(원점 약 900개) 1개로도 학습이 몇 초면 끝난다.
+# LightGBM을 돌린 프로세스에서 torch를 여러 스레드로 쓰면 맥에서 멈춘다(OpenMP 충돌).
+# 원점이 약 900개라 1스레드로도 몇 초면 끝난다.
 torch.set_num_threads(1)
 
 PAST_LEN = 28
 
 
 def _day_feats(m, part):
-    """하루 단위 과거 특성(행 = 날짜). 신고율은 0건인 날 로그가 안 되므로 1을 더해 계산한다"""
+    """날짜별 과거 특성. 0건인 날 때문에 신고율은 건수에 1을 더해 로그를 취한다"""
     return np.column_stack([
         np.log((m[part].to_numpy() + 1) / m.rentals.clip(lower=1).to_numpy() * 1e4),
         np.log(m.rentals.clip(lower=1).to_numpy()), m.tavg.to_numpy() / 10, np.log1p(m.rain_mm.to_numpy()),
@@ -40,8 +37,11 @@ def _day_feats(m, part):
 
 
 def make_arrays(m, part, f, expo_hat, extra=False):
-    """원점별 입력 배열을 만든다. f: 미래 7일 표(py/fc.py의 future_frame), expo_hat: 각 행의 대여량 예측.
-    돌려주는 것: dict(past, fut, stat, s1, oi). s1 = 구조 나이브(최근 4주 신고율 × 대여량 예측의 7일 합계)"""
+    """원점별 입력 배열을 만든다.
+
+    f: fc.future_frame의 미래 7일 표, expo_hat: 행별 대여량 예측.
+    반환: dict(past, fut, stat, s1, oi). s1은 구조 나이브(최근 4주 신고율 × 대여량 예측)의 7일 합계
+    """
     oi = f.oi.to_numpy().reshape(-1, 7)[:, 0]
     day = _day_feats(m, part)
     past = np.stack([day[i - PAST_LEN:i] for i in oi])                                   # (원점, 28, 7)
@@ -72,14 +72,16 @@ class _Net(nn.Module):
 
 def fit_predict_gru(tr, y_tr, hold_mask, va_pred, seeds=(0, 1, 2), max_epochs=300, patience=20):
     """GRU를 학습하고 예측한다.
-    tr, y_tr   : 학습 원점의 입력 배열(시나리오 A)과 실제 7일 합계
-    hold_mask  : 학습 원점 중 '언제 멈출지' 정하는 데 쓸 뒤쪽 원점 표시(True/False 배열)
-    va_pred    : 실제로 예측할 입력(평가할 시나리오의 값)
 
-    몇 바퀴(epoch) 학습할지 정하는 방법(검증 구간을 보지 않는다):
-      1) hold_mask가 False인 앞쪽 원점으로 학습하면서, 뒤쪽 원점의 오차가 20바퀴 연속 나아지지 않으면 멈춘다.
-      2) 가장 좋았던 바퀴 수로 학습 원점 전체를 처음부터 다시 학습한다.
-    입력 값의 크기를 맞추는 기준(평균·표준편차)은 학습 원점에서만 구한다. 돌려주는 것: 원점별 예측 표"""
+    tr, y_tr  : 학습 원점의 입력 배열(시나리오 A)과 실제 7일 합계
+    hold_mask : early stopping에 쓸 뒤쪽 학습 원점(bool 배열)
+    va_pred   : 예측할 입력(평가할 시나리오 값)
+
+    epoch 수는 검증 구간을 보지 않고 정한다. hold_mask가 False인 원점으로 학습하며 홀드아웃 오차가
+    patience번 연속 나아지지 않으면 멈추고, 가장 좋았던 epoch 수로 학습 원점 전체를 처음부터 다시 학습한다.
+    표준화용 평균·표준편차는 학습 원점에서만 구한다.
+    반환: 원점별 예측 표
+    """
     def norm_stats(a):
         flat = a.reshape(-1, a.shape[-1]); mu = flat.mean(0); sd = flat.std(0); sd[sd < 1e-6] = 1
         return mu, sd
@@ -91,7 +93,7 @@ def fit_predict_gru(tr, y_tr, hold_mask, va_pred, seeds=(0, 1, 2), max_epochs=30
     hold = torch.tensor(np.asarray(hold_mask)); fit_idx = torch.where(~hold)[0]; all_idx = torch.arange(len(t_tr))
 
     def train(net, opt, idx, epochs, watch=None):
-        """idx 원점으로 epochs바퀴 학습. watch가 있으면 그 원점의 오차를 보며 조기 종료하고 가장 좋았던 바퀴 수를 돌려준다"""
+        """idx 원점으로 epochs번 학습. watch가 있으면 그 오차로 early stopping하고 가장 좋았던 epoch을 돌려준다"""
         best, best_ep, wait = np.inf, epochs, 0
         for ep in range(1, epochs + 1):
             net.train(); perm = idx[torch.randperm(len(idx))]
@@ -119,7 +121,7 @@ def fit_predict_gru(tr, y_tr, hold_mask, va_pred, seeds=(0, 1, 2), max_epochs=30
     outs = []
     for seed in seeds:
         net, opt = new_net(seed)
-        ep = train(net, opt, fit_idx, max_epochs, watch=torch.where(hold)[0])      # 1) 바퀴 수 정하기
+        ep = train(net, opt, fit_idx, max_epochs, watch=torch.where(hold)[0])      # 1) epoch 수 정하기
         net, opt = new_net(seed)
         train(net, opt, all_idx, ep)                                               # 2) 전체로 다시 학습
         net.eval()

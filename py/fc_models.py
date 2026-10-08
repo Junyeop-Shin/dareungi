@@ -1,56 +1,61 @@
-"""단계 1C의 예측 모형들 — 모두 "원점별 앞으로 7일 합계"를 같은 형식으로 돌려준다
+"""1C 예측 모형. 모두 원점별 앞으로 7일 합계를 같은 형식으로 돌려준다.
 
-돌려주는 표의 형식(모든 모형 공통): origin(원점 날짜), part(부품 열 이름), model(모형 이름), pred(예측), q10·q90(80% 예측구간, 없으면 빈칸)
+출력 형식: origin, part, model, pred, q10·q90(80% 예측구간, 없으면 빈칸)
 
-모형
-  S1   구조 나이브      : 최근 4주 신고율 × 대여량 예측. 날씨·요일이 신고율에 주는 효과는 쓰지 않는다
-  GLM  음이항 회귀      : 하루씩 '신고율'을 예측해 대여량 예측과 곱하고 7일을 더한다(1B의 설명 모형을 예측용으로 바꾼 것)
-  LGB  LightGBM         : 원점마다 한 행을 만들어 7일 합계를 바로 맞힌다(트리 여러 개를 더하는 방식. 변수 간 상호작용을 스스로 찾는다)
-  ARIMAX 시계열 모형    : 어제·그제 값과의 관계(자기상관)에 달력·날씨를 더한 전통적 시계열 모형
+  S1     구조 나이브  최근 4주 신고율 × 대여량 예측. 날씨·요일의 신고율 효과는 안 쓴다
+  GLM    음이항 회귀  날마다 신고율을 예측해 대여량 예측과 곱하고 7일을 더한다(1B 설명 모형의 예측판)
+  LGB    LightGBM     원점마다 한 행으로 7일 합계를 바로 맞힌다
+  ARIMAX 시계열       자기상관에 달력·날씨를 외생변수로 더한 모형
 
-공통 규칙: 학습에는 학습 구간만 쓴다. 미래의 대여량·신고 건수는 쓰지 않는다. 날씨는 시나리오에 따른다(py/fc.py 참고).
+학습은 학습 구간만 쓰고, 미래 대여량·신고 건수는 쓰지 않는다. 날씨 시나리오는 py/fc.py 참고.
 """
 import itertools
 import warnings
 
-import lightgbm as lgb      # torch(py/fc_dl.py)보다 먼저 불러야 한다(맥에서 순서가 바뀌면 프로세스가 죽는다)
+import lightgbm as lgb      # torch(fc_dl)보다 먼저 import해야 한다. 맥에서 순서가 바뀌면 프로세스가 죽는다
 import numpy as np
 import pandas as pd
 
-from fc import PARTS, TRAIN_DAYS, INTERVENTIONS, fit_nb_fc, future_frame, sum7_fwd, sum_back
+from fc import TRAIN_DAYS, INTERVENTIONS, fit_nb_fc, sum7_fwd, sum_back
 
 # ---------------------------------------------------------------------------
 # 음이항 회귀: 신고율 × 대여량 예측
 # ---------------------------------------------------------------------------
 
-# 신고율 모형의 설명변수. lvl = 그 부품의 최근 4주 신고율(연도 수준 대신 '요즘 수준'을 알려 준다)
+# 신고율 모형의 설명변수. lvl은 그 부품의 최근 4주 신고율로, 연도 더미 대신 현재 수준을 준다
 GLM_CAL = "np.log(lvl) + C(dow) + is_holiday + after_off + bridge + fs1 + fc1 + fs2 + fc2"
-GLM_WX = " + cold_wave + winter_anom + tavg + snow_any + np.log1p(rain_mm) + np.log1p(rain_lag1)"     # 체크포인트 C의 날씨 묶음
-GLM_EXTRA = " + hot + freeze_thaw"                                                                    # 넣은 것·뺀 것을 비교할 변수
+GLM_WX = " + cold_wave + winter_anom + tavg + snow_any + np.log1p(rain_mm) + np.log1p(rain_lag1)"     # 1B에서 고른 날씨 변수
+GLM_EXTRA = " + hot + freeze_thaw"                                                                    # 넣고 빼며 비교할 변수
 
 
 def fit_glm(m, part, weather=True, extra=False, end=TRAIN_DAYS[1]):
-    """부품 하나의 신고율 모형을 학습 구간의 날들로 맞춘다. 대여건수는 노출(offset).
-    weather=False면 날씨 변수를 뺀다(시나리오 D). extra=True면 더위·얼었다 녹은 날을 더 넣는다.
-    end: 학습에 쓰는 마지막 날. 테스트 때는 검증 구간까지(2024-12-31) 넣어 다시 맞춘다"""
+    """부품 하나의 신고율 모형을 학습 구간으로 맞춘다. 대여건수가 offset.
+
+    weather=False면 날씨 변수를 뺀다(시나리오 D). extra=True면 hot, freeze_thaw를 더한다.
+    end: 학습 마지막 날. 테스트 때는 2024-12-31까지 넣어 다시 맞춘다.
+    """
     tr = m[m.date.between(TRAIN_DAYS[0], end) & (m.bad == 0)].assign(lvl=lambda t: t["lvl_" + part]).dropna(subset=["lvl"])
     rhs = GLM_CAL + (GLM_WX if weather else "") + (GLM_EXTRA if (weather and extra) else "")
     return fit_nb_fc(f"{part} ~ {rhs}", tr, offset=np.log(tr.rentals))
 
 
 def fit_glm_rows(rows, part, weather=True):
-    """신고율 모형을 '미래 7일 표' 형식의 학습 행(원점 × 며칠 뒤, 날씨는 예보)으로 맞춘다.
-    실제 날씨로 학습한 fit_glm과 달리, 예보로 학습하면 모형이 '예보를 어느 정도만 믿는' 법을 배운다(대여량 모형에서 확인한 효과).
-    rows: fc.future_frame(m, 학습 원점, "B")의 결과. 신고 건수와 대여건수(offset)는 실제 값"""
+    """신고율 모형을 미래 7일 표 형식의 학습 행(원점 × lead, 날씨는 예보)으로 맞춘다.
+
+    실측으로 학습한 fit_glm과 달리, 예보로 학습하면 예보를 적당히 덜 믿는 계수가 나온다(대여량 모형에서 확인).
+    rows: fc.future_frame(m, 학습 원점, "B") 결과. 신고 건수와 대여건수(offset)는 실제 값
+    """
     tr = rows[rows.bad == 0].assign(lvl=lambda t: t["lvl_" + part]).dropna(subset=["lvl"])
     rhs = GLM_CAL + (GLM_WX if weather else "")
     return fit_nb_fc(f"{part} ~ {rhs}", tr, offset=np.log(tr.rentals))
 
 
 def predict_glm(fit, f, part, expo_hat, nsim=1000, seed=42):
-    """맞춘 모형으로 '미래 7일 표'(f)의 각 날 기대 건수를 구해 원점별로 더한다.
-    expo_hat: 각 행의 대여량 예측값. 예측구간은 음이항 분포에서 nsim번 뽑아 7일 합계의 10%·90% 지점으로 만든다
-    (대여량 예측의 오차와 계수의 불확실성은 들어 있지 않아 실제보다 좁게 나온다)."""
+    """미래 7일 표(f)의 날별 기대 건수를 원점별로 더한다.
+
+    expo_hat: 행별 대여량 예측. 예측구간은 음이항 분포에서 nsim번 뽑은 7일 합계의 10%·90% 분위수다.
+    대여량 예측 오차와 계수 불확실성은 빠져 있어서 실제보다 좁다.
+    """
     res, alpha = fit
     g = f.assign(lvl=f["lvl_" + part])
     mu = np.asarray(res.predict(g, offset=np.log(expo_hat))).reshape(-1, 7)
@@ -72,16 +77,17 @@ def predict_s1(f, part, expo_hat):
 
 LGB_BASE = ["lw", "l4w", "ly", "lw_expo", "rate4w", "rain_lw", "n_off", "n_hol", "doy_s", "doy_c", "expo_hat"]   # 과거 값·달력·대여량 예측
 LGB_WX = ["w_tavg", "w_tmax", "w_tmin", "w_rain_days", "w_rain_sum", "w_cold_days", "w_winter_anom", "w_snow_days"]  # 목표 주의 날씨 요약
-LGB_EXTRA = ["w_hot_days", "w_freeze_days"] + INTERVENTIONS                                                         # 넣은 것·뺀 것을 비교할 변수
+LGB_EXTRA = ["w_hot_days", "w_freeze_days"] + INTERVENTIONS                                                         # 넣고 빼며 비교할 변수
 
 
 def week_feats(m, part, f, expo_hat):
     """원점별 특성 표를 만든다.
-      lw, l4w  : 지난주 합계, 최근 4주의 주 평균        ly : 작년 같은 주 합계
-      lw_expo  : 지난주 대여 합계                        rate4w : 최근 4주 신고율(bad인 날 제외 없이 단순 계산)
-      rain_lw  : 지난주 강수 합계                        n_off, n_hol : 목표 주의 쉬는 날·공휴일 수(미리 안다)
-      doy_s/c  : 계절 위치(1년 주기 사인·코사인)         expo_hat : 목표 주 대여량 예측 합계
-      w_*      : 목표 주의 날씨 요약(시나리오 값)        개입 변수 : 원점 날짜의 값
+
+      lw, l4w  지난주 합계, 최근 4주 주평균      ly       작년 같은 주 합계
+      lw_expo  지난주 대여 합계                  rate4w   최근 4주 신고율(bad인 날도 포함)
+      rain_lw  지난주 강수 합계                  n_off, n_hol  목표 주의 쉬는 날·공휴일 수
+      doy_s/c  1년 주기 사인·코사인              expo_hat 목표 주 대여량 예측 합계
+      w_*      목표 주 날씨 요약(시나리오 값)    개입 변수는 원점 날짜의 값
     """
     x = m[part]
     hist = pd.DataFrame({
@@ -100,21 +106,22 @@ def week_feats(m, part, f, expo_hat):
 
 
 def fit_predict_lgb(tr, va, feats, hold_from, quantiles=True, seed=42):
-    """LightGBM을 학습 원점(tr)으로 맞추고 검증 원점(va)을 예측한다.
-    tr, va: week_feats() 표에 y(실제 7일 합계)를 붙인 것. feats: 쓸 특성 이름 목록.
+    """학습 원점(tr)으로 LightGBM을 맞추고 va를 예측한다.
 
-    나무 개수를 정하는 방법(검증 구간을 보지 않는다):
-      1) 학습 원점을 둘로 나눈다. hold_from(행 번호)보다 앞은 맞추는 데, 뒤는 '언제 멈출지' 정하는 데 쓴다.
-      2) 뒤쪽의 오차가 100번 연속 나아지지 않으면 멈추고, 그때의 나무 개수를 기록한다.
-      3) 그 개수로 학습 원점 전체를 다시 맞춘다.
-    이렇게 해야 검증 점수가 다른 모형(음이항 등)과 같은 조건이 된다.
-    돌려주는 것: (예측 표, 특성 중요도, 나무 개수). 80% 구간은 10%·90% 분위수를 직접 맞히는 모형 두 개로 만든다."""
+    tr, va: week_feats() 표에 y(실제 7일 합계)를 붙인 것. feats: 쓸 특성 목록.
+
+    트리 개수는 검증 구간을 보지 않고 정한다. 학습 원점을 hold_from(행 번호)에서 나눠 앞으로 맞추고
+    뒤쪽 오차로 early stopping(100회)한 뒤, 그 개수로 학습 원점 전체를 다시 맞춘다.
+    음이항 등 다른 모형과 같은 조건에서 검증 점수를 비교하려는 것이다.
+    80% 구간은 10%·90% 분위수 모형 두 개로 만든다.
+    반환: (예측 표, 특성 중요도, 트리 개수)
+    """
     params = dict(objective="poisson", learning_rate=0.03, num_leaves=15, min_data_in_leaf=40, feature_fraction=0.8,
                   bagging_fraction=0.8, bagging_freq=1, lambda_l2=1.0, seed=seed, verbose=-1)
     a, h = tr[tr.oi < hold_from], tr[tr.oi >= hold_from]
     probe = lgb.train(params, lgb.Dataset(a[feats], a.y), num_boost_round=3000,
                       valid_sets=[lgb.Dataset(h[feats], h.y)], callbacks=[lgb.early_stopping(100, verbose=False)])
-    rounds = max(int(probe.best_iteration * len(tr) / len(a)), 50)      # 자료가 늘어난 만큼 나무도 조금 더
+    rounds = max(int(probe.best_iteration * len(tr) / len(a)), 50)      # 늘어난 학습 행 비율만큼 트리도 늘린다
     model = lgb.train(params, lgb.Dataset(tr[feats], tr.y), num_boost_round=rounds)
     out = pd.DataFrame({"oi": va.oi.to_numpy(), "pred": model.predict(va[feats])})
     if quantiles:
@@ -126,7 +133,7 @@ def fit_predict_lgb(tr, va, feats, hold_from, quantiles=True, seed=42):
 
 
 # ---------------------------------------------------------------------------
-# ARIMAX: 전통적 시계열 모형(날씨는 실측값 = 시나리오 A로만)
+# ARIMAX: 날씨는 실측값(시나리오 A)으로만
 # ---------------------------------------------------------------------------
 
 def _arima_exog(m):
@@ -136,10 +143,11 @@ def _arima_exog(m):
 
 def arimax_forecast(m, part, origins_i):
     """부품 하나에 ARIMAX를 맞추고 원점별 7일 합계를 예측한다.
-    - 차수 (p, d, q)는 작은 격자(p·q는 0~2, d는 0~1)에서 학습 구간 AIC가 가장 낮은 것으로 고른다.
-    - 계수는 학습 구간에서 한 번만 추정하고, 원점마다 '그 전날까지의 실제 값'으로 상태만 갱신해 7일을 내다본다.
-    - bad인 날(운영 중단, 신고 누락)은 빈칸으로 둔다(이 모형은 빈칸을 건너뛸 수 있다).
-    - 미래 7일의 날씨는 실측값을 쓴다(시나리오 A). ARIMAX에 가장 유리한 조건이다.
+
+    - 차수 (p, d, q)는 p·q 0~2, d 0~1 격자에서 학습 구간 AIC가 가장 낮은 것
+    - 계수는 학습 구간에서 한 번만 추정하고, 원점마다 전날까지의 실제 값으로 상태만 갱신해 7일을 예측
+    - bad인 날은 결측으로 둔다(상태공간 모형이라 건너뛴다)
+    - 미래 날씨는 실측값(시나리오 A)이라 ARIMAX에 가장 유리한 조건이다
     """
     from statsmodels.tsa.statespace.sarimax import SARIMAX
     s0 = int(np.where(m.date >= TRAIN_DAYS[0])[0][0]); s1 = int(np.where(m.date <= TRAIN_DAYS[1])[0][-1]) + 1
@@ -156,6 +164,6 @@ def arimax_forecast(m, part, origins_i):
                     best = r
             except Exception:
                 pass
-        allr = best.apply(y[s0:end], exog=X[s0:end])                    # 같은 계수로 검증 구간 끝까지 상태만 갱신
+        allr = best.apply(y[s0:end], exog=X[s0:end])                    # 같은 계수로 마지막 원점까지 상태만 갱신
         preds = [float(np.clip(allr.predict(start=i - s0, end=i - s0 + 6, dynamic=True), 0, None).sum()) for i in origins_i]
     return pd.DataFrame({"oi": np.asarray(origins_i), "pred": preds}), best.specification["order"]

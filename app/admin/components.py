@@ -1,6 +1,9 @@
-"""관리자 앱 공통 화면 조각 — 사람이 준 시안(2026-10-08) + 08a 설계서 3절. 2026-10-08 화면 점검 뒤 수정:
-위쪽 메뉴(사이드바 없음), 카드 제목과 링크 한 줄 정렬, 빈 상태는 회색 한 줄, 고지문은 접기, 분석 용어 대신 쓰는 사람의 말.
-상태는 색 + 글자 + 아이콘을 항상 함께 쓴다(색각 이상 배려)"""
+"""관리자 앱 화면들이 같이 쓰는 조각(08a 설계서 3절).
+
+머리 영역(제목·기준 시각·자치구 필터), KPI, 카드 제목, 등급 배지, 자전거 목록, 자치구 타일맵, 예측 정확도 계산, 고지문.
+빈 상태는 오류처럼 보이지 않게 회색 한 줄로, 고지문은 접어서 둔다.
+상태 표시는 색만으로 구분하지 않고 글자와 아이콘을 같이 쓴다(색각 이상 배려).
+"""
 import sys
 from pathlib import Path
 
@@ -12,15 +15,15 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 from common import data, theme, texts            # noqa: E402
 from common.seoul_tiles import DISTRICTS, SEOUL_TILES   # noqa: E402
 
-QUICK_GU = ["강남구", "송파구", "마포구"]       # 머리 영역에 바로 보이는 자치구(나머지는 '구 추가')
-CONF_HIGH, CONF_MID = 0.20, 0.0                # 예측 신뢰도 등급 기준('지난주만큼' 대비 개선율). 08a 9절 초안 유지(사람 결정 2026-10-08)
+QUICK_GU = ["강남구", "송파구", "마포구"]       # 머리 영역에 버튼으로 바로 보이는 자치구. 나머지는 '구 선택'에서
+CONF_HIGH, CONF_MID = 0.20, 0.0                # 예측 정확도 등급 기준: '지난주와 같다'(나이브) 대비 오차 개선율(08a 9절)
 CONF_ICON = {"높음": "✅", "보통": "⚠️", "낮음": "⛔"}
 BADGE = {"점검 권장": ("g-insp", "⚠"), "주의": ("g-warn", "ⓘ"), "보통": ("g-norm", "•"), "낮음": ("g-low", "·"), "이용 적음": ("g-low", "–")}
 
 
 # ── 자치구 필터 ───────────────────────────────────────────
-# 머리 영역에는 '서울 전체' + 자주 쓰는 3개 구만 버튼으로 두고, 나머지는 '구 선택' 팝오버에서 고른다.
-# 고른 구가 많아져도 버튼이 늘어나 가리지 않게, 고른 구 이름은 버튼 아래 한 줄로 보여 준다(2026-10-08 사람 지적).
+# 버튼은 '서울 전체'와 자주 쓰는 3개 구만 두고, 나머지는 '구 선택' 팝오버에서 고른다.
+# 고른 구가 많아도 버튼이 늘어나지 않도록 고른 구 이름은 버튼 아래 한 줄로 보여 준다.
 def _pills_changed():
     sel = [g for g in (st.session_state.get("gu_pills") or []) if g != "서울 전체"]
     prev = data.get_gu()
@@ -97,8 +100,8 @@ PAGE_URL = {"views/parts_forecast.py": "parts_forecast", "views/inspection.py": 
 
 
 def card_title(title, page=None, link="자세히", sub=None):
-    """카드 제목(왼쪽)과 이동 링크(오른쪽 끝)를 한 줄에, 그 아래 무엇을 세는지 한 줄(sub).
-    링크는 HTML이라 위치가 정확하다. 고른 자치구는 주소(?gu=)에 실어 다음 화면에서도 유지된다"""
+    """카드 제목(왼쪽)과 이동 링크(오른쪽 끝)를 한 줄에 두고, 그 아래 무엇을 세는지 한 줄(sub)을 붙인다.
+    링크를 HTML로 직접 그려야 오른쪽 끝에 정확히 붙는다. 고른 자치구는 주소(?gu=)에 실어 다음 화면으로 넘긴다."""
     href = ""
     if page:
         from urllib.parse import urlencode
@@ -110,7 +113,7 @@ def card_title(title, page=None, link="자세히", sub=None):
 
 
 def empty(msg):
-    """빈 상태: 오류처럼 보이는 큰 상자 대신 회색 한 줄"""
+    """데이터가 없을 때. st.info 같은 큰 상자는 오류처럼 보여서 회색 한 줄로 쓴다."""
     st.markdown(f'<div class="empty">{msg}</div>', unsafe_allow_html=True)
 
 
@@ -126,14 +129,14 @@ def grade_badge(g):
 
 
 def station_label(no, name):
-    """대여소 번호와 이름: '108번 서교동 사거리'"""
+    """대여소 표기. 예: '108번 서교동 사거리'"""
     if pd.isna(no):
         return "확인 안 됨"
     return f"{int(no)}번 {name}" if isinstance(name, str) and name else f"{int(no)}번"
 
 
 def recent_reported_ids():
-    """최근 REPORT_DAYS일 안에 고장 신고된 자전거 번호(점검 권장 목록에서 뺀다)"""
+    """최근 REPORT_DAYS일 안에 고장 신고된 자전거 번호. 점검 권장 목록에서 뺄 때 쓴다."""
     rr = data.load("reported_recent")
     return set() if rr is None else set(rr.bike_id)
 
@@ -145,7 +148,7 @@ def exclude_reported(df):
 
 
 def bike_rows(df, n=5):
-    """오늘 먼저 볼 자전거: 번호 · 등급 · 첫 번째 이유, 둘째 줄에 마지막 반납 대여소(찾으러 갈 곳)"""
+    """먼저 점검할 자전거 목록. 한 줄에 번호 · 등급 · 첫 번째 이유, 둘째 줄에 마지막 반납 대여소(찾으러 갈 곳)."""
     rows = []
     for r in df.head(n).itertuples():
         reason = (r.reasons or "").split(" / ")[0] or "—"
@@ -158,7 +161,7 @@ def bike_rows(df, n=5):
 
 
 def tilemap(counts, what="점검 권장 자전거 수"):
-    """자치구 타일맵(HTML 6 × 6 격자). 색 3단계는 25개 구 분포의 3분위로 자동. 선택한 구는 흰 테두리"""
+    """자치구 타일맵(HTML 6 × 6 격자). 색 3단계는 25개 구 값의 3분위로 나누고, 고른 구는 테두리로 표시한다."""
     vals = [counts.get(g, 0) for g in DISTRICTS]
     q1, q2 = np.quantile(vals, [1 / 3, 2 / 3]) if vals else (0, 0)
     sel = set(data.get_gu())
@@ -189,7 +192,7 @@ def track_complete(part="전체", weeks=8):
 
 
 def confidence(part="전체"):
-    """forecast_track(최근 완결 8주): 지난주 오차·8주 평균 오차·'지난주만큼' 대비 개선율·등급. 기록 2주 미만이면 None"""
+    """forecast_track 최근 완결 8주로 지난주 오차, 8주 평균 오차, 나이브 대비 개선율, 등급을 낸다. 기록이 2주 미만이면 None."""
     t = track_complete(part)
     if t is None:
         return None
@@ -206,7 +209,7 @@ def improve_text(improve):
 
 
 def complete_weeks(wa):
-    """weekly_actual에서 7일이 다 찬 주만(진행 중인 이번 주 제외)"""
+    """weekly_actual에서 7일이 다 찬 주만 남긴다(진행 중인 이번 주는 뺀다)."""
     dr = data.load("daily_reports")
     last = pd.to_datetime(dr.date).max() if dr is not None and len(dr) else pd.to_datetime(wa.week).max()
     w = wa.copy()

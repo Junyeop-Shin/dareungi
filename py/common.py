@@ -1,15 +1,22 @@
-"""운영 파이프라인 공통 모듈 — 단계 3A (런북 07)
+"""운영 파이프라인 공통 함수(런북 07).
 
-[무엇을] 수집·갱신 작업(py/jobs/*.py)이 함께 쓰는 것: 운영 DB 연결, 서울 열린데이터 API 호출(재시도·페이지), 경보, 실행 기록, 잠금.
-[원칙]  인증키는 .env에서만(SEOUL_API_KEY, DATA_GO_KR_KEY, 선택 ALERT_WEBHOOK). 코드·로그·스냅샷에 키를 쓰지 않는다.
-        운영 DB는 분석 DB(dareungi.duckdb, 19GB)와 따로 둔다(data/db/ops.duckdb). DuckDB는 한 프로세스만 쓰므로 작업마다 잠금 파일을 쓴다.
-[사용]  from common import connect, fetch_all, alert, log_run, table_exists, job_lock
+py/jobs/*.py 수집·갱신 작업이 같이 쓰는 것들: 운영 DB 연결, 서울 열린데이터 API 호출(재시도·페이지 넘기기),
+경보, 실행 기록, 잠금.
+
+운영 DB(data/db/ops.duckdb)는 분석 DB(dareungi.duckdb, 19GB)와 따로 둔다. DuckDB는 한 프로세스만 쓸 수 있어서
+작업마다 잠금 파일을 잡고 들어간다.
+주의: 인증키는 .env에서만 읽는다(SEOUL_API_KEY, DATA_GO_KR_KEY, 선택 ALERT_WEBHOOK). 코드·로그·스냅샷에 남기지 않는다.
+      requests 오류 메시지에는 키가 든 URL이 그대로 찍히므로, 밖으로 나가는 메시지는 mask_keys()를 거친다.
+
+사용: from common import connect, fetch_all, alert, log_run, table_exists, job_lock
 """
 import datetime as dt
 import os
+import re
 import time
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import quote, quote_plus
 
 import duckdb
 import requests
@@ -31,7 +38,7 @@ def connect(path="data/db/ops.duckdb"):
 
 @contextmanager
 def job_lock(wait_s=2, tries=150):
-    """다른 작업이 DB를 쓰는 동안 기다린다(잠금 파일, 2초마다 최대 5분). 오래된 잠금(30분+)은 죽은 작업으로 보고 지운다"""
+    """잠금 파일로 DB 사용 순서를 맞춘다. 2초 간격으로 최대 5분 기다리고, 30분 넘은 잠금은 죽은 작업의 것으로 보고 지운다."""
     for _ in range(tries):
         if LOCK.exists() and time.time() - LOCK.stat().st_mtime > 1800:
             LOCK.unlink()
@@ -47,23 +54,26 @@ def job_lock(wait_s=2, tries=150):
 
 
 def fetch(service, start, end, *params, retries=4):
-    """한 페이지(최대 1,000건). 돌려주는 것: (전체 건수, 행 목록). 데이터 없음(INFO-200)이면 (0, [])"""
+    """한 페이지(최대 1,000건)를 받아 (전체 건수, 행 목록)을 돌려준다. 데이터 없음(INFO-200)이면 (0, [])."""
     url = f"{SEOUL}/{os.environ['SEOUL_API_KEY']}/json/{service}/{start}/{end}/" + "/".join(str(p) for p in params)
     for i in range(retries):
         try:
             r = requests.get(url, timeout=30)
             r.raise_for_status()
+            if "xml" in r.headers.get("content-type", ""):          # 키 오류 등은 json을 요청해도 XML로 온다
+                text = r.text.replace("<![CDATA[", "").replace("]]>", "")
+                raise RuntimeError(" ".join(re.sub(r"<[^>]+>", " ", text).split()))
             js = r.json()
             body = js.get(service) or next((v for v in js.values() if isinstance(v, dict) and "RESULT" in v), None)
             if body is None:
-                code = js.get("RESULT", {}).get("CODE")
+                code = js.get("CODE") or js.get("RESULT", {}).get("CODE")   # 데이터 없음은 {"CODE": "INFO-200", ...}로 온다
                 if code == "INFO-200":
                     return 0, []
-                raise RuntimeError(f"{service} {params}: {js.get('RESULT')}")
+                raise RuntimeError(js.get("RESULT") or js)
             return int(body.get("list_total_count", 0)), body.get("row", [])
-        except Exception:
+        except Exception as e:
             if i == retries - 1:
-                raise
+                raise RuntimeError(mask_keys(f"{service} {params}: {e}")) from None   # 원래 예외에는 키가 든 URL이 있다
             time.sleep(2 ** i)
 
 
@@ -76,8 +86,20 @@ def fetch_all(service, *params):
     return total, rows
 
 
+def mask_keys(text):
+    """메시지에 섞인 인증키를 ***로 가린다. URL 인코딩된 형태(공공데이터포털 키의 +, /, =)도 같이 가린다."""
+    text = str(text)
+    for name in ("SEOUL_API_KEY", "DATA_GO_KR_KEY", "ALERT_WEBHOOK"):
+        v = os.environ.get(name)
+        if v:
+            for form in {v, quote(v, safe=""), quote_plus(v)}:
+                text = text.replace(form, "***")
+    return text
+
+
 def alert(msg):
-    """경보: 콘솔에 찍고, ALERT_WEBHOOK(디스코드·슬랙)이 있으면 보낸다"""
+    """콘솔에 찍고, ALERT_WEBHOOK(디스코드·슬랙)이 설정돼 있으면 거기에도 보낸다."""
+    msg = mask_keys(msg)
     hook = os.environ.get("ALERT_WEBHOOK")
     print(f"[ALERT] {dt.datetime.now():%Y-%m-%d %H:%M} {msg}", flush=True)
     if hook:
@@ -89,7 +111,7 @@ def alert(msg):
 
 def log_run(con, job, status, detail=""):
     con.execute("CREATE TABLE IF NOT EXISTS job_runs (job VARCHAR, ts TIMESTAMP, status VARCHAR, detail VARCHAR)")
-    con.execute("INSERT INTO job_runs VALUES (?, now(), ?, ?)", [job, status, detail[:2000]])
+    con.execute("INSERT INTO job_runs VALUES (?, now(), ?, ?)", [job, status, mask_keys(detail)[:2000]])
 
 
 def table_exists(con, name):
@@ -97,7 +119,7 @@ def table_exists(con, name):
 
 
 def upsert_rows(con, table, df, delete_where=None, params=()):
-    """원자료를 문자열 그대로 넣는다(변환은 뷰에서). delete_where가 있으면 그 범위를 지우고 다시 넣는다(멱등)"""
+    """원자료를 문자열 그대로 넣는다(형 변환은 뷰에서 한다). delete_where가 있으면 그 범위를 먼저 지워서 다시 돌려도 결과가 같다."""
     if table_exists(con, table) and delete_where:
         con.execute(f"DELETE FROM {table} WHERE {delete_where}", list(params))
     if df is None or df.empty:
@@ -105,6 +127,6 @@ def upsert_rows(con, table, df, delete_where=None, params=()):
     con.register("df_", df)
     if not table_exists(con, table):
         con.execute(f"CREATE TABLE {table} AS SELECT * FROM df_ LIMIT 0")
-    con.execute(f"INSERT INTO {table} BY NAME SELECT * FROM df_")      # 새 필드가 생기면 여기서 오류 → 스키마 변화 감지
+    con.execute(f"INSERT INTO {table} BY NAME SELECT * FROM df_")      # API에 새 필드가 생기면 여기서 오류가 나서 스키마 변화를 알 수 있다
     con.unregister("df_")
     return len(df)

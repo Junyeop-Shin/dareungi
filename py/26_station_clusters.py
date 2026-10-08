@@ -1,19 +1,20 @@
-"""대여소 성격 군집 — 단계 2A-6 (런북 05)
+"""대여소를 이용 시간대 패턴으로 군집한다(런북 05, 2A-6).
 
-[무엇을]
 대여소마다 요일×시간 168칸의 대여 비율과 반납 비율(합쳐 336차원)을 만들어 KMeans로 묶는다.
-군집은 **학습 기간(2025-06-30까지, 06 문서 2B-1의 Train)** 자료로만 만든다 — 검증·테스트 기간 정보가 섞이지 않게.
-군집마다 평균 프로파일(평일 출근 시간 대여/반납 초과, 주말 낮 비중, 왕복 비중)을 표로 내어 이름을 붙일 근거를 준다.
-  평일 출근 시간 반납 초과 → 업무지구 / 평일 출근 시간 대여 초과 → 주거지 / 주말 낮·왕복 집중 → 여가 / 단거리 → 환승
-[입력]  DuckDB trips (2A-2), station
-[출력]  data/interim/station_cluster.csv (st_no, cluster, k별), output/tables/panel_2a6_cluster_profile.csv
-[실행]  .venv/bin/python py/26_station_clusters.py   (약 1 ~ 2분)
-군집 수(4 ~ 6)는 사람이 프로파일을 보고 정한다. 여기서는 k = 4, 5, 6을 모두 만들어 둔다.
+검증·테스트 기간 정보가 섞이지 않도록 학습 기간(2025-06-30까지, 런북 06 2B-1) 통행만 쓴다.
+군집별 평균 프로파일(평일 출퇴근 시간 대여·반납 비중, 주말 낮 비중, 왕복 비중, 거리 중앙값)을 표로 내서
+이름을 붙일 때 근거로 쓴다. 대략 평일 출근 시간 반납이 많으면 업무지구, 대여가 많으면 주거지,
+주말 낮·왕복이 많으면 여가, 거리가 짧으면 환승으로 읽는다.
+
+군집 수는 4~6 중에서 프로파일을 보고 고른다(지금은 5, 29_panel.py의 CLUSTER_K). 여기서는 셋 다 만든다.
+
+입력: DuckDB trips, station
+출력: data/interim/station_cluster.csv (st_no, cluster_k4~k6), output/tables/panel_2a6_cluster_profile.csv
+실행: .venv/bin/python py/26_station_clusters.py  (1~2분)
 """
 import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
 
@@ -34,9 +35,9 @@ def main():
     ) GROUP BY ALL""").df()
     wide = prof.pivot_table(index="st", columns=["dir", "slot"], values="n", fill_value=0)
     tot = wide.sum(axis=1)
-    wide = wide[tot >= 1000]                                  # 너무 드문 대여소는 뺀다(프로파일이 잡음)
+    wide = wide[tot >= 1000]                                  # 건수가 적으면 프로파일이 잡음이라 뺀다
     share = wide.div(wide.sum(axis=1), axis=0)
-    # 해석용 요약 지표(대여소별)
+    # 군집 해석용 대여소별 요약 지표
     cols = share.columns
     def pick(dir_, dows, hours):
         c = [x for x in cols if x[0] == dir_ and (x[1] // 100) in dows and (x[1] % 100) in hours]

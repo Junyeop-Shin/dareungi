@@ -1,12 +1,14 @@
-"""고장신고 수집 — 단계 3A-4 (런북 07). 매일 06:10
+"""고장신고 수집(런북 07, 3A-4). 매일 06:10.
 
-[무엇을] tbCycleFailureReport로 최근 7일 신고를 매일 다시 받아 raw_fail에 넣는다(늦게 등록되는 신고 대비).
-  - 날짜 파라미터는 '그날부터 약 30일치'를 돌려준다(단계 0) → 한 번 부르고 regDttm으로 거른다
-  - 한 행 = 신고 × 고장유형. 신고 건수는 COUNT(DISTINCT bikeNo || regDttm)
-  - 단계 0 Q1: API 시차 0 ~ 1일 → 이 작업을 켠다
-[출력] ops.duckdb: raw_fail, 뷰 fail_live(bike_id, reg_ts, kind), job_runs
-[실행] .venv/bin/python py/jobs/collect_fail.py [days=7]
-       .venv/bin/python py/jobs/collect_fail.py range 2026-07-01 2026-10-07   (과거 구간: 28일씩 나눠 받는다 — API가 시작일부터 약 30일만 주므로)
+tbCycleFailureReport로 최근 7일 신고를 매일 다시 받아 raw_fail에 넣는다. 늦게 등록되는 신고가 있어서
+며칠치를 겹쳐 받고, 받은 날짜 범위는 지우고 다시 넣는다. API 시차는 0 ~ 1일이다.
+
+주의: 날짜 파라미터를 주면 그날부터 약 30일치가 온다. 한 번 부르고 regDttm으로 거른다.
+한 행은 신고 1건 × 고장유형 1개라서 신고 건수는 COUNT(DISTINCT bikeNo || regDttm)으로 센다.
+
+출력: ops.duckdb raw_fail, 뷰 fail_live(bike_id, reg_ts, kind), job_runs
+실행: .venv/bin/python py/jobs/collect_fail.py [days=7]
+      .venv/bin/python py/jobs/collect_fail.py range 2026-07-01 2026-10-07   # 과거 구간은 28일씩 나눠 받는다
 """
 import datetime as dt
 import sys
@@ -51,7 +53,7 @@ def run(days=7):
 
 
 def run_range(a, b, step=28):
-    """a ~ b(날짜)를 step일씩 받는다. 각 조각은 그 조각의 날짜만 지우고 다시 넣는다(멱등)"""
+    """a ~ b를 step일씩 나눠 받는다. 조각마다 그 날짜 범위만 지우고 다시 넣으니 다시 돌려도 된다."""
     d = a
     with job_lock():
         con = connect()

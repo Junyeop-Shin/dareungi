@@ -1,6 +1,9 @@
-"""따릉이 프로젝트 공통 도우미 — 인코딩 변환, 열 이름 표준화, 파일 읽기
+"""공통 도우미: 인코딩 변환, 열 이름 표준화, 파일 읽기.
 
-노트북에서:  import sys; sys.path.append("../py");  from prep import to_utf8, std_name, read_any
+원본 CSV는 대부분 CP949이고 확장자만 .csv인 엑셀도 섞여 있어서,
+UTF-8 사본을 만든 뒤 같은 함수로 읽는다.
+
+사용: import sys; sys.path.append("../py"); from prep import to_utf8, std_name, read_any
 """
 import codecs
 from pathlib import Path
@@ -13,7 +16,7 @@ import pandas as pd
 # ---------------------------------------------------------------------------
 
 def sniff(path, n=200_000):
-    """파일 앞부분으로 형식·인코딩을 추정한다"""
+    """파일 앞부분을 보고 형식·인코딩을 추정한다"""
     with open(path, "rb") as fh:
         raw = fh.read(n)
     if raw[:2] == b"PK":
@@ -28,11 +31,11 @@ def sniff(path, n=200_000):
             return enc
         except UnicodeDecodeError:
             pass
-    return "mixed"                                 # 대부분은 맞는데 깨진 바이트가 섞여 있다
+    return "mixed"                                 # 대부분 맞는데 깨진 바이트가 섞인 파일
 
 
 def _best_guess(path, n=5_000_000):
-    """깨진 바이트가 섞인 파일: utf-8과 cp949 중 대체 글자가 적은 쪽을 고른다"""
+    """깨진 바이트가 섞인 파일용. utf-8과 cp949 중 대체 글자가 적게 나오는 쪽을 고른다"""
     with open(path, "rb") as fh:
         raw = fh.read(n)
     return min(("utf-8-sig", "cp949"), key=lambda e: raw.decode(e, errors="replace").count("�"))
@@ -65,13 +68,16 @@ def to_utf8(src, dst):
 
 
 def data_files(folder):
-    """폴더 안의 CSV·엑셀만 이름순으로 (맥의 .DS_Store 같은 숨김 파일 제외)"""
+    """폴더 안의 CSV·엑셀 파일을 이름순으로 돌려준다(.DS_Store 같은 숨김 파일 제외)"""
     return sorted(p for p in Path(folder).iterdir()
                   if p.suffix.lower() in (".csv", ".xlsx", ".xls") and not p.name.startswith((".", "~$")))
 
 
 def make_utf8_folder(src_dir, dst_dir):
-    """raw 폴더 → interim/<폴더>_utf8. CSV는 UTF-8 사본, 엑셀은 그대로 복사(이름만 .csv인 엑셀은 .xlsx로)"""
+    """raw 폴더를 interim/<폴더>_utf8로 옮긴다.
+
+    CSV는 UTF-8 사본을 만들고 엑셀은 그대로 복사한다. 이름만 .csv인 엑셀은 .xlsx로 바꿔 복사한다.
+    """
     import shutil
     dst_dir = Path(dst_dir); dst_dir.mkdir(parents=True, exist_ok=True)
     rows = []

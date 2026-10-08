@@ -1,7 +1,11 @@
-"""시민 조회 앱(별도 주소) — 08a 설계서 1절, 08 문서 3B-3. 휴대폰에서 대여소 앞에서 보는 화면이라 짧고 크게.
-번호 하나로 집계값만 보여 준다. 읽는 것: bike_card, bike_risk_latest(등급·이유만), data_status.
-관리자 전용 정보(마지막 반납 대여소·위험도 숫자)는 읽지 않는다.
-실행: .venv/bin/streamlit run app/citizen/app.py --server.port 8502"""
+"""시민용 자전거 조회 앱(08a 설계서 1절, 런북 08 3B-3). 관리자 앱과 주소를 따로 쓴다.
+
+대여소 앞에서 휴대폰으로 보는 화면이라 글자를 크게, 내용은 짧게 둔다. 자전거 번호 하나를 넣으면 집계값만 보여 준다.
+마지막 반납 대여소나 위험도 숫자 같은 관리자용 정보는 읽지 않는다.
+
+입력: serving/bike_card, bike_risk_latest(등급·이유 열만), data_status
+실행: .venv/bin/streamlit run app/citizen/app.py --server.port 8502
+"""
 import re
 import sys
 from pathlib import Path

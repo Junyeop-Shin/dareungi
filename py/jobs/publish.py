@@ -1,13 +1,16 @@
-"""스냅샷 발행 — 단계 3A-6 (런북 07)
+"""스냅샷 발행(런북 07, 3A-6).
 
-[무엇을] 대시보드가 읽을 작은 Parquet을 serving/ 에 만든다. DuckDB 파일은 한 프로세스만 쓰므로 대시보드는 DB가 아니라 이 스냅샷만 읽는다.
-         임시 파일에 쓴 뒤 os.replace로 원자적으로 바꿔, 반쯤 쓰인 파일을 읽는 일이 없게 한다.
-  bike_risk_latest  자전거별 위험 점수·등급·이유(weekly.py)        forecast_weekly  부품별 주간 예측(weekly.py)
-  bike_card         시민 조회용 집계(daily.py)                    alerts_live      헛대여 경보(detect_sham.py)
-  weekly_actual     주 × 자치구 대여·신고(actuals.py)                daily_reports    일 × 자치구 × 부품 신고(actuals.py)
-  forecast_track    주별 예측·실제·나이브(actuals.py)            reported_recent  최근 14일 고장 신고된 자전거(daily.py)
-  data_status       각 데이터의 최신 시각(화면의 '기준 시각')
-[실행] .venv/bin/python py/jobs/publish.py   (daily.py·weekly.py 끝에서도 호출)
+대시보드가 읽을 작은 Parquet 파일을 serving/에 만든다. DuckDB는 한 프로세스만 쓸 수 있어서
+대시보드는 DB를 열지 않고 serving/*.parquet만 읽는다. 임시 파일에 쓴 뒤 os.replace로 바꿔치기해서
+반쯤 쓰인 파일을 읽는 일이 없게 한다.
+
+  bike_risk_latest  자전거별 위험 점수·등급·이유(weekly.py)     forecast_weekly  부품별 주간 예측(weekly.py)
+  bike_card         시민 조회용 집계(daily.py)                  alerts_live      헛대여 경보(detect_sham.py)
+  weekly_actual     주 × 자치구 대여·신고(actuals.py)           daily_reports    일 × 자치구 × 부품 신고(actuals.py)
+  forecast_track    주별 예측·실제·나이브(actuals.py)           reported_recent  최근 7일 고장 신고된 자전거(daily.py)
+  data_status       데이터별 최신 시각(화면의 '기준 시각')
+
+실행: .venv/bin/python py/jobs/publish.py   # daily.py·weekly.py 끝에서도 부른다
 """
 import os
 import sys
@@ -29,7 +32,7 @@ def publish(con, table, name=None):
 
 
 def build_status(con):
-    """각 데이터의 최신 시각과 작업 상태를 한 표로"""
+    """데이터별 최신 시각과 마지막 수집 시각을 data_status 표 하나로 모은다."""
     parts = []
     if table_exists(con, "rent_hours_done"):
         parts.append("SELECT '대여이력' AS data, CAST(max(q_hour) + INTERVAL 1 HOUR AS VARCHAR) AS latest, CAST(max(fetched_at) AS VARCHAR) AS fetched FROM rent_hours_done")

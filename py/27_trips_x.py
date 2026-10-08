@@ -1,17 +1,21 @@
-"""통행 테이블 완성 — 단계 2A-7 (런북 05): 통행 구분·지형·날씨를 붙이고 자전거 궤적 사건을 만든다
+"""통행마다 통행 구분·지형·날씨를 붙이고 자전거별 이동 순서를 만든다(런북 05, 2A-7).
 
-[무엇을]
-  holidays  공휴일 표(data/raw/calendar/holidays_2016_2026.csv)
-  trips_x   trips + 통행 구분(commute/leisure) + OD 지형(직선거리·오르막·내리막·우회율) + 그 시간 날씨(기온·강수·직전 3시간 강수)
-            + use_m_fixed(거리 오류 행은 직선거리 × 우회율 중앙값으로 채운 거리)
-  trips_seq trips_x + 자전거 궤적: 직전 반납과 다른 대여소에서 나타났는가(relocated = 사람 없이 옮겨짐), 직전 반납 뒤 쉰 시간(idle_h)
-[통행 구분 규칙 — 대여소가 아니라 통행 하나하나]
-  출퇴근 commute: 평일(공휴일 제외) 07 ~ 09시 또는 17 ~ 19시 대여, 왕복 아님
-  여가   leisure: 주말·공휴일, 또는 왕복, 또는 한강 대여소 출발·도착(station.han_river — 이름 규칙 임시값)
-  둘 다 아니면 기타. (commute와 leisure는 겹칠 수 있다: 주말 출근 시간은 leisure)
-[입력]  DuckDB trips, od, station, wx_h
-[출력]  DuckDB holidays, trips_x, trips_seq, output/tables/panel_2a7_checks.csv
-[실행]  .venv/bin/python py/27_trips_x.py   (약 5 ~ 15분. 창 함수는 연도별로 나누지 않고 한 번에 — 메모리 8GB·임시 폴더로 충분했다)
+만드는 테이블:
+  holidays   공휴일(data/raw/calendar/holidays_2016_2026.csv)
+  trips_x    trips + 통행 구분(commute/leisure) + OD 지형(직선거리, 오르막, 내리막, 우회율)
+             + 대여 시각의 날씨(기온, 강수, 직전 3시간 강수) + use_m_fixed
+  trips_seq  trips_x + relocated(직전 반납과 다른 대여소에서 대여됨 = 이용자 없이 옮겨짐), idle_h(직전 반납 뒤 쉰 시간)
+use_m_fixed는 거리 기록이 잘못된 행(dist_bad)을 직선거리 × 우회율 중앙값으로 채운 거리다.
+
+통행 구분은 대여소가 아니라 통행 하나하나에 붙인다.
+  commute  평일(공휴일 제외) 07~09시 또는 17~19시 대여이고 왕복이 아님
+  leisure  주말·공휴일, 왕복, 또는 한강 대여소 출발·도착(station.han_river, 이름 기준 임시 규칙)
+둘 다 아니면 기타다. 주말 출근 시간대 통행은 leisure이고, 평일 출퇴근 시간에 한강 대여소를 오간 통행은
+commute와 leisure가 둘 다 참이다.
+
+입력: DuckDB trips, od, station, wx_h
+출력: DuckDB holidays, trips_x, trips_seq, output/tables/panel_2a7_checks.csv
+실행: .venv/bin/python py/27_trips_x.py  (5~15분. 창 함수는 연도로 나누지 않아도 메모리 8GB에서 돌았다)
 """
 import sys
 from pathlib import Path

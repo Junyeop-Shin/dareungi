@@ -1,10 +1,13 @@
-"""운영 DB 초기화 — 단계 3A-5 (런북 07). 처음 한 번(그리고 반기 파일 대사 뒤)
+"""운영 DB 초기화(런북 07, 3A-5). 처음 한 번, 그리고 반기 파일을 새로 맞춰 본 뒤에 돌린다.
 
-[무엇을] 분석 DB(data/db/dareungi.duckdb, 2A에서 만든 것)의 과거 주별 요약을 운영 DB(data/db/ops.duckdb)로 복사한다.
-         그래야 운영 중 계산하는 '마지막 신고 이후 누적'이 2023-07부터 이어진다.
-  복사: bw_usage, bw_fail, bike_info, station(→ station_base), wx_w(주별 강수일·동결융해일), station_cluster
-[주의] 분석 DB는 19GB라 운영 DB로 통째로 옮기지 않는다. 주별 요약(수백만 행)만.
-[실행] .venv/bin/python py/jobs/init_ops.py   (분석 DB를 다른 프로세스가 열고 있으면 안 된다)
+분석 DB(data/db/dareungi.duckdb, 2A에서 만든 것)의 과거 주별 요약을 운영 DB(data/db/ops.duckdb)로 복사한다.
+그래야 운영 중에 계산하는 '마지막 신고 이후 누적'이 2023-07부터 이어진다.
+복사하는 표: bw_usage, bw_fail, bike_info, station(→ station_base), wx_w(주별 강수일·동결융해일), station_cluster
+
+주의: 분석 DB는 19GB라 통째로 옮기지 않고 주별 요약(수백만 행)만 가져온다.
+분석 DB를 다른 프로세스가 열고 있으면 실패한다.
+
+실행: .venv/bin/python py/jobs/init_ops.py
 """
 import sys
 from pathlib import Path

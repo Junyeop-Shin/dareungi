@@ -1,15 +1,18 @@
-"""날씨 수집 — 단계 3A-4 (런북 07). 관측은 매일 06:30, 예보는 05:20·17:20
+"""날씨 수집(런북 07, 3A-4). 관측은 매일 06:30, 예보는 05:20·17:20.
 
-[무엇을]
-  관측  ASOS 시간자료(서울 108) D−1(빠진 날은 따라잡기, 최근 7일 다시) → wx_hourly_live(ts, temp, rain_mm, humidity, wind)
-  예보  단기예보(VilageFcstInfoService_2.0, 격자 60·127 = 1C 시나리오 B와 같은 격자)의 05시·17시 발표분을 **발표 시각과 함께** fcst_archive에
-        (issue_ts, fcst_ts, category, value). 몇 달 모이면 1C의 '실제 예보' 백테스트에 그대로 쓸 수 있다.
-  중기예보(MidFcstInfoService, 06·18시 발표): 서울 기온(getMidTa, 11B10101)은 4 ~ 10일 뒤 최저·최고, 수도권 육상(getMidLandFcst, 11B00000)은 강수확률·하늘.
-        단기예보가 +103시간(약 4일)까지라 5일 뒤부터는 중기예보만 있다. 같은 fcst_archive에 src = 'mid'로 쌓는다. (2026-10-07 승인 확인)
-[출력] ops.duckdb: wx_hourly_live, fcst_archive, job_runs
-[실행] .venv/bin/python py/jobs/collect_wx.py obs      # 관측
-       .venv/bin/python py/jobs/collect_wx.py fcst     # 예보(가장 최근 05 또는 17시 발표분)
-       .venv/bin/python py/jobs/collect_wx.py          # 둘 다
+관측: ASOS 시간자료(서울 108)를 최근 7일치 다시 받아 wx_hourly_live(ts, temp, rain_mm, humidity, wind)에 넣는다.
+      빠진 날도 이걸로 따라잡는다.
+단기예보: VilageFcstInfoService_2.0, 격자 60·127(1C 시나리오 B와 같은 격자)의 05시·17시 발표분을
+      발표 시각과 함께 fcst_archive(issue_ts, fcst_ts, category, value)에 쌓는다. 몇 달 모이면 1C의
+      '실제 예보' 백테스트에 그대로 쓸 수 있다.
+중기예보: MidFcstInfoService, 06·18시 발표. 서울 기온(getMidTa, 11B10101)은 4 ~ 10일 뒤 최저·최고,
+      수도권 육상(getMidLandFcst, 11B00000)은 강수확률·하늘. 단기예보가 +103시간(약 4일)까지라
+      5일 뒤부터는 중기예보밖에 없다. 같은 fcst_archive에 src = 'mid'로 쌓는다.
+
+출력: ops.duckdb wx_hourly_live, fcst_archive, job_runs
+실행: .venv/bin/python py/jobs/collect_wx.py obs      # 관측
+      .venv/bin/python py/jobs/collect_wx.py fcst     # 예보(가장 최근 05시 또는 17시 발표분)
+      .venv/bin/python py/jobs/collect_wx.py          # 둘 다
 """
 import datetime as dt
 import os
@@ -21,22 +24,27 @@ import pandas as pd
 import requests
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
-from common import alert, connect, job_lock, log_run, table_exists, upsert_rows   # noqa: E402
+from common import alert, connect, job_lock, log_run, mask_keys, upsert_rows   # noqa: E402
 
 ASOS = "http://apis.data.go.kr/1360000/AsosHourlyInfoService/getWthrDataList"
 VILAGE = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst"
 MID = "http://apis.data.go.kr/1360000/MidFcstInfoService/"
-MID_ON = True            # 2026-10-07 공공데이터포털 승인 확인
+MID_ON = True            # 중기예보 활용신청 승인됨(공공데이터포털, 2026-10-07)
 
 
 def _get_json(url, params, tries=4):
+    """JSON이 올 때까지 몇 번 다시 시도한다. 실패 메시지는 키를 가린 뒤 올린다(requests 오류에는 serviceKey가 든 URL이 찍힌다)."""
+    err = None
     for i in range(tries):
-        r = requests.get(url, params={**params, "serviceKey": os.environ["DATA_GO_KR_KEY"]}, timeout=60)
         try:
+            r = requests.get(url, params={**params, "serviceKey": os.environ["DATA_GO_KR_KEY"]}, timeout=60)
             return r.json()
         except ValueError:
-            time.sleep(3 * (i + 1))
-    raise RuntimeError(f"JSON 응답 없음: {r.text[:200]}")
+            err = f"JSON 응답 없음: {r.text[:200]}"
+        except requests.RequestException as e:
+            err = str(e)
+        time.sleep(3 * (i + 1))
+    raise RuntimeError(mask_keys(err))
 
 
 def fetch_asos_day(d):
@@ -84,7 +92,7 @@ def fetch_vilage(base_date, base_time, nx=60, ny=127):
 
 
 def fetch_mid(tm_fc):
-    """중기예보: 발표 시각(YYYYMMDDHHMM) 기준 4 ~ 10일 뒤. 돌려주는 것: (fcst_date, category, value) 목록"""
+    """발표 시각(YYYYMMDDHHMM) 기준 4 ~ 10일 뒤 중기예보를 (fcst_date, category, value) 목록으로 돌려준다."""
     out = []
     ta = _get_json(MID + "getMidTa", dict(pageNo=1, numOfRows=10, dataType="JSON", regId="11B10101", tmFc=tm_fc))["response"]["body"]["items"]["item"][0]
     land = _get_json(MID + "getMidLandFcst", dict(pageNo=1, numOfRows=10, dataType="JSON", regId="11B00000", tmFc=tm_fc))["response"]["body"]["items"]["item"][0]
@@ -124,7 +132,7 @@ def run_mid():
 
 def run_fcst():
     now = dt.datetime.now()
-    base_time = "1700" if now.hour >= 17 or now.hour < 5 else "0500"            # 가장 최근 발표분
+    base_time = "1700" if now.hour >= 17 or now.hour < 5 else "0500"            # 가장 최근 발표 회차
     base_date = (now - dt.timedelta(days=1)).date() if now.hour < 5 else now.date()
     issue = dt.datetime.strptime(f"{base_date:%Y%m%d}{base_time}", "%Y%m%d%H%M")
     with job_lock():

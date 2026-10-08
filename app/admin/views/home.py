@@ -1,6 +1,10 @@
-"""한눈에 보기(홈) — 사람이 준 시안(2026-10-08) + 08a 설계서 3절. 제목만 읽어도 무엇을 세는지 알게 고침(2026-10-08 사람 요청),
-라이트·다크 두 테마, 점검 권장 목록·타일맵은 최근 14일 신고된 자전거를 뺀 기준.
-머리 영역 → KPI 4개 → 부품별 예상 고장 신고 · 주별 고장 신고 → 자치구별 점검 권장 · 먼저 점검할 자전거 · 예측 정확도 → 고지"""
+"""한눈에 보기(홈) 화면(08a 설계서 3절).
+
+배치: 머리 영역 → KPI 4개 → 부품별 예상 고장 신고 · 주별 고장 신고
+      → 자치구별 점검 권장 · 먼저 점검할 자전거 · 예측 정확도 → 고지문.
+카드 제목만 읽어도 무엇을 세는지 알 수 있게 쓴다. 점검 권장 수와 타일맵은 최근 REPORT_DAYS일 안에
+신고된 자전거를 뺀 수다(그 자전거들은 점검 대상 화면에서 따로 본다).
+"""
 import sys
 from pathlib import Path
 
@@ -17,7 +21,7 @@ ui.header("따릉이 정비 현황")
 p = theme.P()
 
 fc, risk, alerts, wa = data.load("forecast_weekly"), data.load("bike_risk_latest"), data.load("alerts_live"), data.load("weekly_actual")
-risk_un = ui.exclude_reported(risk)                    # 최근 14일 신고된 자전거는 '이미 신고된 자전거'로 따로 본다
+risk_un = ui.exclude_reported(risk)                    # 최근 신고된 자전거는 점검 권장 집계에서 뺀다
 risk_f, alerts_f = data.apply_gu(risk_un), data.apply_gu(alerts)
 has_fc = fc is not None and not fc.empty and fc.pred.notna().any()
 latest_fc = fc[fc.issue_date == fc.issue_date.max()].set_index("part") if has_fc else None
@@ -42,7 +46,7 @@ with k2:
         if len(rate) >= 2:
             d = rate.iloc[-1] - rate.iloc[-2]
             trend = "그 전 주와 같음" if abs(d) < 0.05 else f"그 전 주보다 {abs(d):.1f}건 {'적음' if d < 0 else '많음'}"
-            # 증감 색은 중립(회색): 신고율 하락이 고장 감소를 뜻하지 않으므로(08a 3-3, 04b 결과)
+            # 증감은 색 없이 회색으로 둔다. 신고율이 내려갔다고 고장이 줄었다는 뜻은 아니다(08a 3-3, 04b)
             ui.kpi("지난주 대여 1,000건당 고장 신고", f"{rate.iloc[-1]:.1f}건", f"{g.index[-1]:%-m/%-d}~{data.shift_days(g.index[-1], 6):%-m/%-d} 실제 값<br>{trend}", help=texts.RATE_NOTE)
         else:
             ui.kpi("지난주 대여 1,000건당 고장 신고", "—", "주별 기록이 더 쌓이면 표시")
@@ -57,7 +61,7 @@ with k3:
         ui.kpi("점검 권장 자전거", "—", "선택한 지역에 자전거 없음")
 with k4:
     n = int((alerts_f.alert_ts >= data.since(48)).sum()) if alerts_f is not None and len(alerts_f) else 0
-    ui.kpi("빌리자마자 반납이 반복된 자전거", f"{n:,}대", f"최근 48시간 · 2~3분 만에 같은 곳 반납이 2번 연속" if n else "최근 48시간 동안 없음",
+    ui.kpi("빌리자마자 반납이 반복된 자전거", f"{n:,}대", "최근 48시간 · 2~3분 만에 같은 곳 반납이 2번 연속" if n else "최근 48시간 동안 없음",
            value_color=p["danger"] if n else None, help=texts.QUICK_RETURN_NOTE)
 st.write("")
 
@@ -122,7 +126,7 @@ with c3:
     with st.container(border=True):
         dr = data.load("daily_reports")
         yday = pd.to_datetime(dr.date).max() if dr is not None and len(dr) else None
-        view = st.segmented_control("타일맵에 표시", [f"점검 권장 자전거", "어제 고장 신고"], default="점검 권장 자전거",
+        view = st.segmented_control("타일맵에 표시", ["점검 권장 자전거", "어제 고장 신고"], default="점검 권장 자전거",
                                     key="tile_view", label_visibility="collapsed") or "점검 권장 자전거"
         if view == "어제 고장 신고" and yday is not None:
             ui.card_title("자치구별 어제 고장 신고", P2, "지도",
@@ -137,7 +141,7 @@ with c3:
                 ui.empty("점검 권장 등급이 아직 없습니다.")
 with c4:
     with st.container(border=True):
-        ui.card_title("먼저 점검할 자전거", P2, "전체 목록", sub=f"아직 고장 신고되지 않은 자전거 중 고장 신고 가능성 상위 5대")
+        ui.card_title("먼저 점검할 자전거", P2, "전체 목록", sub="아직 고장 신고되지 않은 자전거 중 고장 신고 가능성 상위 5대")
         if risk_f is not None and len(risk_f):
             ui.bike_rows(risk_f[risk_f.grade != "산정 제외"].sort_values("rate_1000km", ascending=False), n=5)
         else:

@@ -1,21 +1,27 @@
-"""자전거×주 패널 — 단계 2A-9 (런북 05). 06 문서의 위험 모형은 이 표 하나만 읽는다
+"""자전거×주 패널을 만든다(런북 05, 2A-9). 위험 모형(런북 06)은 이 표 하나만 읽는다.
 
-[무엇을]
-주(월요일 시작) 단위로 자전거 한 대의 상태표를 만든다.
-  (1) bw_usage  주별 이용 요약(대여 수, km, 분, 출퇴근·여가·왕복·비·젖은 노면·더위·추위 비중, 오르막·내리막, 속도, 재배치, 헛대여)
-  (2) bw_fail   주별 신고(48시간 중복 병합 후), 부품별, 수리 추정(repaired_likely = 신고 뒤 48시간 이상 공백)
-  (3) panel0    자전거마다 첫 주 ~ 마지막 주의 빈 주를 포함한 격자에 (1)(2)와 주별 날씨(강수일·동결융해일)를 붙임
-  (4) panel     '마지막 신고 이후' 누적(km, 대여, 오르막, 강수일, 동결융해일), 최근 13주 신고, 최근 4주 km, 최근 2주 헛대여, 라벨(다음 주 신고)
-  (5) bike_info 차종(최빈값), 처음 등장일, 2023-06 이전 누적 km, age_known(2022-03 이후 번호만 실제 나이. 그 전 번호는 QR 재부여)
-  (+) 그 주 대여의 출발 대여소 군집(2A-6, CLUSTER_K) 비중 sh_cl0 ~
-  (6) 저장      2024-01-01 이후 & 라벨이 있는 행만 data/processed/panel/bike_week.parquet
-[주의]
-  - 2026년 파일에만 있는 '같은 대여소 0 ~ 1분' 기록은 이용 요약에서 뺀다(그 전 파일에는 없는 종류라 2026년 대여 수가 4% 부푼다).
-  - 모든 설명변수는 그 주 끝까지의 정보, 라벨(y_next 등)만 다음 주 값이다(누수 점검은 2A-10).
-  - repaired_likely는 신고 '이후' 공백으로 계산된다. 신고 주의 행에서 설명변수로 쓰지 않는다(last_repaired는 공백이 끝난 뒤부터만 값이 있다).
-[입력]  DuckDB trips_seq, fail_gap, bike_year, data/processed/daily_master_v2.csv
-[출력]  DuckDB bw_usage, bw_fail, panel0, panel, bike_info, data/processed/panel/bike_week.parquet, output/tables/panel_2a9_checks.csv
-[실행]  .venv/bin/python py/29_panel.py   (약 5 ~ 10분)
+주(월요일 시작)마다 자전거 한 대의 상태를 한 행으로 둔다. 만드는 테이블:
+  bw_usage   주별 이용 요약. 대여 수, km, 분, 출퇴근·여가·왕복·비·젖은 노면·더위·추위 비중, 오르막·내리막,
+             속도, 재배치, 헛대여, 출발 대여소 군집별 비중(sh_cl0~, 군집은 26_station_clusters.py)
+  bw_fail    주별 신고 수(48시간 중복 병합 뒤), 부품별 신고 수, repaired_likely(신고 뒤 48시간 이상 대여 없음)
+  panel0     자전거마다 첫 주~마지막 주를 빈 주까지 채운 격자에 위 두 표와 주별 강수일·동결융해일을 붙인 것
+  panel      마지막 신고 이후 누적(km, 대여, 오르막, 강수일, 동결융해일), 최근 13주 신고, 최근 4주 km,
+             최근 2주 헛대여, 라벨(다음 주 신고 수, 부품별)
+  bike_info  차종(최빈값), 처음 등장일, 2023-06 이전 누적 km·대여, age_known
+2024-01-01 이후이고 라벨이 있는 행만 bike_week.parquet로 저장한다.
+
+주의:
+  - bw_usage·bw_fail·panel0·panel의 SQL은 py/panel_sql.py에 있다. 운영(jobs/daily.py)도 같은 SQL을 쓴다.
+  - 같은 대여소 0~1분 기록은 2026년 파일에만 있어 이용 요약에서 뺀다. 그대로 두면 2026년 대여 수가 4% 부푼다.
+  - 설명변수는 모두 그 주 끝까지의 정보이고, 라벨(y_next 등)과 km_next만 다음 주 값이다. 누수 점검은 2A-10.
+  - repaired_likely는 신고 뒤 공백으로 계산하므로 신고 주 행에서 설명변수로 쓰면 안 된다.
+    대신 last_repaired는 공백이 끝난 뒤 주부터만 값이 있다.
+  - 2020~2022-02 자전거번호는 QR 단말기 교체 때 새로 붙어 실제 나이를 모른다. age_known은 2022-03 이후 번호만 참.
+
+입력: DuckDB trips_seq, fail_gap, fail, bike_year, data/interim/station_cluster.csv, data/processed/daily_master_v2.csv
+출력: DuckDB station_cluster, bw_usage, bw_fail, wx_w, panel0, panel, bike_info,
+      data/processed/panel/bike_week.parquet, output/tables/panel_2a9_checks.csv
+실행: .venv/bin/python py/29_panel.py  (5~10분)
 """
 import sys
 from pathlib import Path
@@ -24,39 +30,18 @@ import pandas as pd
 
 sys.path.append(str(Path(__file__).resolve().parent))
 from db import connect   # noqa: E402
+from panel_sql import (BW_FAIL_SELECT, BW_USAGE_SELECT, CLUSTER_K, PANEL0_SQL, PANEL_SQL, REPAIR_H,   # noqa: E402
+                       cl_cols_expr, sh_cl_expr)
 
 ROOT = Path(__file__).resolve().parents[1]
-REPAIR_H = 48          # 신고 뒤 공백이 이보다 길면 수거·정비로 본다(2A-8 분포에서 확인)
-CLUSTER_K = 5          # 대여소 군집 수(2A-6, 사람이 정한다). data/interim/station_cluster.csv의 cluster_k{K} 열을 쓴다
 
 
 def main():
     con = connect()
     sc = (ROOT / "data/interim/station_cluster.csv").as_posix()
     con.execute(f"CREATE OR REPLACE TABLE station_cluster AS SELECT st_no, cluster_k{CLUSTER_K} AS cl FROM read_csv('{sc}', header = true)")
-    sh_cl = ", ".join(f"avg(CASE WHEN c.cl = {i} THEN 1.0 ELSE 0 END) AS sh_cl{i}" for i in range(CLUSTER_K))   # 그 주 대여의 출발 대여소 군집별 비중
-    con.execute(f"""
-    CREATE OR REPLACE TABLE bw_usage AS
-    SELECT bike_id, CAST(date_trunc('week', rent_dt) AS DATE) AS wk,
-      count(*) AS n_trips, sum(use_m_fixed) / 1000.0 AS km, sum(use_min) AS minutes,
-      avg(CAST(commute AS DOUBLE)) AS sh_commute, avg(CAST(leisure AS DOUBLE)) AS sh_leisure, avg(CAST(round_trip AS DOUBLE)) AS sh_round,
-      avg(CASE WHEN rain_now > 0 THEN 1.0 ELSE 0 END) AS sh_rain, avg(CASE WHEN rain_prev3h > 0 THEN 1.0 ELSE 0 END) AS sh_wet,
-      avg(CASE WHEN temp >= 30 THEN 1.0 ELSE 0 END) AS sh_hot, avg(CASE WHEN temp <= 0 THEN 1.0 ELSE 0 END) AS sh_cold,
-      sum(climb_m) AS climb_m, sum(descent_m) AS descent_m,
-      median(speed_kmh) AS speed_med, stddev(speed_kmh) AS speed_sd,
-      sum(CAST(relocated AS INTEGER)) AS n_reloc, sum(CAST(sham AS INTEGER)) AS n_sham,
-      {sh_cl}
-    FROM trips_seq t LEFT JOIN station_cluster c ON t.rent_st = c.st_no
-    WHERE NOT bad_time AND NOT (rent_st = rtn_st AND use_min <= 1)
-    GROUP BY ALL""")
-    con.execute(f"""
-    CREATE OR REPLACE TABLE bw_fail AS
-    SELECT bike_id, CAST(date_trunc('week', reg_ts) AS DATE) AS wk,
-      count(DISTINCT reg_ts) AS n_rep,
-      sum(CASE WHEN kind = '타이어' THEN 1 ELSE 0 END) AS n_tire, sum(CASE WHEN kind = '체인' THEN 1 ELSE 0 END) AS n_chain,
-      sum(CASE WHEN kind = '안장' THEN 1 ELSE 0 END) AS n_saddle, sum(CASE WHEN kind = '페달' THEN 1 ELSE 0 END) AS n_pedal,
-      max(CASE WHEN gap_h >= {REPAIR_H} OR gap_h IS NULL THEN 1 ELSE 0 END) AS repaired_likely
-    FROM fail_gap WHERE keep GROUP BY ALL""")
+    con.execute("CREATE OR REPLACE TABLE bw_usage AS " + BW_USAGE_SELECT.format(sh_cl=sh_cl_expr(), src="trips_seq", cluster="station_cluster", extra_where=""))
+    con.execute("CREATE OR REPLACE TABLE bw_fail AS " + BW_FAIL_SELECT.format(src="fail_gap", extra_where="WHERE keep", repair_h=REPAIR_H))
     master = (ROOT / "data/processed/daily_master_v2.csv").as_posix()
     con.execute(f"""
     CREATE OR REPLACE TABLE wx_w AS
@@ -64,46 +49,8 @@ def main():
            sum(CASE WHEN rain_mm >= 1 THEN 1 ELSE 0 END) AS rain_days,
            sum(CASE WHEN tmin < 0 AND tmax > 0 THEN 1 ELSE 0 END) AS freeze_days
     FROM read_csv('{master}', header = true) GROUP BY 1""")
-    cl_cols = ", ".join(f"u.sh_cl{i}" for i in range(CLUSTER_K))
-    con.execute(f"""
-    CREATE OR REPLACE TABLE panel0 AS
-    WITH span AS (SELECT bike_id, min(wk) AS w0, max(wk) AS w1 FROM bw_usage GROUP BY bike_id),
-         weeks AS (SELECT DISTINCT wk FROM bw_usage)
-    SELECT s.bike_id, w.wk,
-      coalesce(u.n_trips, 0) AS n_trips, coalesce(u.km, 0) AS km, coalesce(u.minutes, 0) AS minutes,
-      u.sh_commute, u.sh_leisure, u.sh_round, u.sh_rain, u.sh_wet, u.sh_hot, u.sh_cold,
-      coalesce(u.climb_m, 0) AS climb_m, coalesce(u.descent_m, 0) AS descent_m, u.speed_med, u.speed_sd,
-      coalesce(u.n_reloc, 0) AS n_reloc, coalesce(u.n_sham, 0) AS n_sham, {cl_cols},
-      coalesce(f.n_rep, 0) AS n_rep, coalesce(f.n_tire, 0) AS n_tire, coalesce(f.n_chain, 0) AS n_chain,
-      coalesce(f.n_saddle, 0) AS n_saddle, coalesce(f.n_pedal, 0) AS n_pedal, coalesce(f.repaired_likely, 0) AS repaired_likely,
-      x.rain_days, x.freeze_days
-    FROM span s JOIN weeks w ON w.wk BETWEEN s.w0 AND s.w1
-    LEFT JOIN bw_usage u ON u.bike_id = s.bike_id AND u.wk = w.wk
-    LEFT JOIN bw_fail  f ON f.bike_id = s.bike_id AND f.wk = w.wk
-    LEFT JOIN wx_w     x ON x.wk = w.wk""")
-    con.execute("""
-    CREATE OR REPLACE TABLE panel AS
-    WITH a AS (
-      SELECT *, sum(CASE WHEN n_rep > 0 THEN 1 ELSE 0 END) OVER (PARTITION BY bike_id ORDER BY wk ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS seg
-      FROM panel0)
-    SELECT *,
-      CASE WHEN seg = 0 THEN sum(km) OVER s ELSE sum(km) OVER s - first_value(km) OVER s END AS km_since_rep,
-      CASE WHEN seg = 0 THEN sum(n_trips) OVER s ELSE sum(n_trips) OVER s - first_value(n_trips) OVER s END AS trips_since_rep,
-      CASE WHEN seg = 0 THEN sum(climb_m) OVER s ELSE sum(climb_m) OVER s - first_value(climb_m) OVER s END AS climb_since_rep,
-      CASE WHEN seg = 0 THEN sum(rain_days) OVER s ELSE sum(rain_days) OVER s - first_value(rain_days) OVER s END AS rain_days_since_rep,
-      CASE WHEN seg = 0 THEN sum(freeze_days) OVER s ELSE sum(freeze_days) OVER s - first_value(freeze_days) OVER s END AS freeze_days_since_rep,
-      CASE WHEN seg > 0 AND sum(n_trips) OVER s - first_value(n_trips) OVER s > 0 THEN first_value(repaired_likely) OVER s END AS last_repaired,
-      sum(km) OVER (PARTITION BY bike_id ORDER BY wk ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS km_cum,
-      seg = 0 AS left_censored,
-      date_diff('day', max(CASE WHEN n_rep > 0 THEN wk END) OVER (PARTITION BY bike_id ORDER BY wk ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), wk) AS days_since_rep,
-      sum(n_rep) OVER (PARTITION BY bike_id ORDER BY wk ROWS BETWEEN 12 PRECEDING AND CURRENT ROW) AS rep_13w,
-      sum(km) OVER (PARTITION BY bike_id ORDER BY wk ROWS BETWEEN 3 PRECEDING AND CURRENT ROW) AS km_4w,
-      sum(n_sham) OVER (PARTITION BY bike_id ORDER BY wk ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS sham_2w,
-      lead(n_rep) OVER (PARTITION BY bike_id ORDER BY wk) AS y_next,
-      lead(n_tire) OVER (PARTITION BY bike_id ORDER BY wk) AS y_tire_next, lead(n_chain) OVER (PARTITION BY bike_id ORDER BY wk) AS y_chain_next,
-      lead(n_saddle) OVER (PARTITION BY bike_id ORDER BY wk) AS y_saddle_next, lead(n_pedal) OVER (PARTITION BY bike_id ORDER BY wk) AS y_pedal_next,
-      lead(km) OVER (PARTITION BY bike_id ORDER BY wk) AS km_next
-    FROM a WINDOW s AS (PARTITION BY bike_id, seg ORDER BY wk ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)""")
+    con.execute(PANEL0_SQL.format(cl_cols=cl_cols_expr()))
+    con.execute(PANEL_SQL)
     con.execute("""
     CREATE OR REPLACE TABLE bike_info AS
     SELECT t.bike_id, mode(t.bike_type) AS bike_type,

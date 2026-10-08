@@ -1,21 +1,24 @@
-"""레짐 원인 사후 분석 R4b·R5·R6 — 자전거 한 대 단위로 '신고 성향', '수거 속도', '신고 없는 수거'를 잰다
+"""레짐 원인 사후 분석 R4b·R5·R6: 자전거 단위로 신고 성향, 수거 속도, 신고 없는 수거를 잰다.
 
-[무엇을·왜]
-R4a(헛대여율 vs 신고율)는 총량 비교라 "마주친 사람이 신고하는 확률"을 직접 재지 못한다. 상세 대여이력이 있으면 잴 수 있다.
-  R4b 신고 성향: 헛대여(같은 대여소 반납, 2 ~ 3분)가 난 자전거가 같은 날 또는 다음 날 신고되는 비율 p_rep.
-       고장 신호가 같을 때 사람들이 얼마나 신고하는가. 2025-03 전후로 내리면 '신고 성향 하락'의 직접 증거.
-  R5  수거 속도: 신고된 자전거가 다음에 대여되기까지의 공백(일). 하루 안 재대여 비율(신고됐는데 계속 운행),
-       2일 이상 공백 비율(수거·정비 추정), 공백 중앙값. 2025-03 이후 공백이 짧아지면 "고장 자전거를 더 빨리 뺀다" → 중복 신고 감소(H5).
-  R6  신고 없는 운행 중단: 7일(또는 14일) 이상 대여가 없다가 '다른 대여소'에서 다시 나타났고(사람 없이 옮겨짐)
-       그 공백 앞뒤 3일 안에 신고가 없는 경우 = 직원이 신고 없이 수거·정비했을 가능성(H6). 월별 활동 자전거 천 대당 건수.
-       한계: 재배치 트럭 이동·장기 보관과 섞인다 → 두 기준(7·14일)으로 본다.
+R4a(헛대여율 vs 신고율)는 총량 비교라 고장 자전거를 마주친 사람이 신고할 확률을 직접 재지 못한다.
+상세 대여이력으로 자전거 단위로 본다.
+  R4b 신고 성향: 헛대여(같은 대여소 반납, 2~3분)가 난 자전거가 같은 날·다음 날 신고되는 비율 p_rep.
+      2025-03 전후로 내려가면 신고 성향이 떨어졌다는 직접 증거다.
+  R5  수거 속도: 신고 뒤 다음 대여까지의 공백(일). 다음 날 재대여 비율(신고됐는데 계속 운행),
+      3일 이상 공백 비율(수거·정비 추정), 공백 중앙값. 2025-03 이후 공백이 짧아지면 고장 자전거를 더 빨리
+      뺀다는 뜻이고, 중복 신고 감소(H5)로 이어진다.
+  R6  신고 없는 운행 중단: 7일(또는 14일) 이상 대여가 없다가 다른 대여소에서 다시 나타났고, 공백 앞뒤 3일
+      안에 신고가 없는 경우. 직원이 신고 없이 수거·정비했을 가능성(H6)으로 보고 월별 활동 자전거 천 대당으로 센다.
+      재배치 트럭 이동·장기 보관과 섞여서 7일·14일 두 기준으로 본다.
 
-[단위 주의] 2021-02 ~ 12 신고는 등록일시에 시각이 없다(0시). 그래서 모든 비교를 **날짜 단위**로 한다(두 기간을 같은 규칙으로).
-[입력]  data/processed/rent_2021/ (2020-10 ~ 2021-09), data/processed/rent/ (2023-07 ~ 2026-06), data/processed/fail_std.parquet
-[출력]  output/tables/rc_4b_monthly.csv, rc_5_monthly.csv, rc_6_monthly.csv (월별), rc_456_periods.csv (비교 기간별 요약)
-[실행]  .venv/bin/python py/rc_bike_level.py            (두 폴더 모두)
-        .venv/bin/python py/rc_bike_level.py rent_2021  (한 폴더만)
-사후 분석이다. 예측 모형(1C) 선택에는 쓰지 않는다.
+주의: 2021-02~12 신고는 등록일시에 시각이 없어(0시) 두 기간 모두 날짜 단위로 비교한다.
+
+사후 분석이라 예측 모형(1C) 선택에는 쓰지 않는다.
+
+입력: data/processed/rent_2021/ (2020-10 ~ 2021-09), data/processed/rent/ (2023-07 ~ 2026-06), data/processed/fail_std.parquet
+출력: output/tables/rc_4b_monthly.csv, rc_5_monthly.csv, rc_6_monthly.csv (월별), rc_456_periods.csv (비교 기간별 요약)
+실행: .venv/bin/python py/rc_bike_level.py            (두 폴더 모두)
+      .venv/bin/python py/rc_bike_level.py rent_2021  (한 폴더만)
 """
 import sys
 from pathlib import Path
@@ -32,7 +35,7 @@ FOLDERS = {"rent_2021": ("2020-10-01", "2021-09-30"), "rent": ("2023-07-01", "20
 
 
 def build(con, folder, lo, hi):
-    """폴더 하나의 상세를 읽어 임시 테이블 trips(중복 제거, 헛대여 표시), rep(신고 단위), seq(자전거 궤적)를 만든다"""
+    """폴더 하나의 상세로 임시 테이블 trips(중복 제거, 헛대여 표시), rep(신고 단위), seq(자전거별 궤적)를 만든다"""
     pq = (ROOT / "data/processed" / folder / "*/*/*.parquet").as_posix()
     con.execute(f"""
     CREATE OR REPLACE TEMP TABLE trips AS
@@ -71,7 +74,7 @@ def r4b(con):
 
 
 def r5(con):
-    """신고 뒤 다음 대여까지의 공백(일, 날짜 단위). 같은 날 대여는 신고 전일 수 있어 '다음 날 이후 첫 대여'로 잰다"""
+    """신고 뒤 다음 대여까지의 공백(일). 같은 날 대여는 신고 전일 수 있어 다음 날 이후 첫 대여로 잰다"""
     return con.sql("""
     WITH g AS (
       SELECT r.bike_id, r.rd, min(t.d) AS next_d
@@ -86,9 +89,11 @@ def r5(con):
 
 
 def r6(con, min_idle, hi):
-    """신고 없는 운행 중단: min_idle일 이상 공백 + 다른 대여소 재등장 + 공백 앞뒤 3일 신고 없음. 활동 자전거 천 대당.
-    자료 끝(hi) 가까이에서 시작한 공백은 재등장을 볼 수 없어(절단) 공백 시작이 hi − min_idle − 14일 이전인 것만 센다.
-    겨울에는 자전거가 오래 쉬므로 계절이 다른 기간끼리 비교하면 안 된다(전년 같은 반기와 비교)."""
+    """신고 없는 운행 중단(활동 자전거 천 대당): min_idle일 이상 공백, 다른 대여소에서 재등장, 앞뒤 3일 신고 없음.
+
+    자료 끝(hi) 근처에서 시작한 공백은 재등장이 잘리므로 공백 시작이 hi − min_idle − 14일 이전인 것만 센다.
+    겨울에는 자전거가 오래 쉬어서 전년 같은 반기끼리만 비교한다.
+    """
     out = con.sql(f"""
     WITH gaps AS (
       SELECT s.bike_id, s.rent_dt, s.prev_rtn_dt, strftime(CAST(s.prev_rtn_dt AS DATE), '%Y-%m') AS ym
@@ -107,14 +112,14 @@ def r6(con, min_idle, hi):
     LEFT JOIN (SELECT ym, count(*) AS n_nr FROM noreport GROUP BY 1) y USING (ym)
     ORDER BY 1
     """).df()
-    # 자료 끝 달은 공백 시작이 절단돼 과소 → 값을 비운다(평균에서 빠진다)
+    # 마지막 달은 절단으로 과소 집계되므로 비워서 평균에서 뺀다
     last = pd.Timestamp(hi).strftime("%Y-%m")
     out.loc[out.ym == last, [f"n_gap_{min_idle}d", f"n_gap_{min_idle}d_noreport", f"per_1k_bikes_{min_idle}d"]] = np.nan
     return out
 
 
 def period_summary(tabs):
-    """비교 기간별로 월 값을 (건수 가중) 평균해 P1/P0 비를 만든다"""
+    """비교 기간별로 월 값을 건수 가중 평균해 P1/P0 비를 만든다"""
     rows = []
     for name, (p0, p1) in PERIODS.items():
         r = {"비교": name}
@@ -130,7 +135,7 @@ def period_summary(tabs):
 
 
 def main(folders):
-    con = duckdb.connect()                                   # 메모리 DB: Parquet만 읽으므로 적재 중인 DB 파일(잠금)과 무관
+    con = duckdb.connect()                                   # 메모리 DB. Parquet만 읽어서 적재 중인 DB 파일 잠금과 충돌하지 않는다
     con.execute("SET memory_limit = '6GB'"); con.execute("SET threads = 4")
     out = {"4b": [], "5": [], "6": []}
     for folder in folders:

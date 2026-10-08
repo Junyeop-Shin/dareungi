@@ -1,10 +1,10 @@
-"""단계 1 보고서용 그림 — 부품별 skill 막대(검증·테스트, 모형별)
+"""단계 1 보고서 그림: 부품별·모형별 skill 막대(검증·테스트).
 
-[무엇을] output/tables/fc_valid.csv, fc_test.csv에서 모형별 skill(나이브 B1 대비 오차 감소율)을 읽어 막대그림으로 그린다.
-[왜]     보고서 필수 그림 "부품별 skill 막대(모형별)". 검증과 테스트를 나란히 두어 낙관 편향(검증 > 테스트)이 한눈에 보이게 한다.
-[입력]   output/tables/fc_valid.csv, output/tables/fc_test.csv  (notebooks/1C_forecast.ipynb, 1C_test.ipynb가 저장)
-[출력]   output/figures/fc_skill_bars.png
-[실행]   .venv/bin/python py/report_figs.py   (저장소 루트에서)
+skill은 나이브 B1 대비 오차 감소율이다. 검증과 테스트를 나란히 그려 검증 > 테스트인 낙관 편향이 보이게 한다.
+
+입력: output/tables/fc_valid.csv, fc_test.csv  (notebooks/1C_forecast.ipynb, 1C_test.ipynb가 저장)
+출력: output/figures/fc_skill_bars.png
+실행: .venv/bin/python py/report_figs.py  (저장소 루트)
 """
 from pathlib import Path
 
@@ -25,7 +25,7 @@ def skill_table(name):
     t = pd.read_csv(ROOT / "output/tables" / name)
     t["부품"] = t.part.map(PARTS)
     s = t.pivot(index="model", columns="부품", values="skill")[list(PARTS.values())]
-    if "selected" not in s.index:       # 검증 표에는 selected 행이 없다 → selection.csv의 모형을 부품별로 고른다
+    if "selected" not in s.index:       # 검증 표에는 selected 행이 없어 selection.csv의 부품별 모형으로 채운다
         sel = pd.read_csv(ROOT / "output/models/selection.csv")
         s.loc["selected"] = [s.loc[sel.set_index("부품").loc[p, "선택"], p] for p in PARTS.values()]
     return s

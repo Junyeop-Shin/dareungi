@@ -1,17 +1,19 @@
-"""해석 모형 — 단계 2B-4 (런북 06): "무엇이 위험을 높이나"를 계수로 말한다
+"""무엇이 신고 위험을 높이는지 계수로 본다(런북 06, 2B-4). 예측용이 아니라 해석용 모형이다.
 
-[무엇을]
-예측이 아니라 해석용. 자전거 5,000대 표본(학습 + 검증 기간, 다음 주 주행이 있는 행)으로
-  (a) 음이항 회귀 + 주행거리 offset + 자전거 단위 군집 표준오차 → IRR(1 표준편차 또는 단위당 신고율 배수). 전체 + 부품별
-  (b) Cox 비례위험 모형, 시간축 = 마지막 신고 이후 주행거리(start = km_since_rep, stop = start + km_next), 사건 = 다음 주 신고,
-      차종으로 층화, 자전거 단위 군집 보정 → 위험비(HR). "같은 거리를 달렸을 때 무엇이 더 위험한가"
-가설(런북 06): H1 누적 거리 +, H2 오르막 + (체인·페달), H3 비·젖은 노면 + (체인), H4 출퇴근/여가 부품별 부호 차이,
-              H5 재배치 + (안장·페달), H6 수리된 뒤 −, H7 나이 +. 결과가 반대여도 그대로 적는다.
-[주의] sh_* 는 w주(이번 주) 값이다. 엄밀히는 다음 주 주행 특성이 맞지만, 패널에 없어 이번 주 값을 대리로 쓴다(한계).
-       나이(age_days)는 나이를 아는 자전거(2022-03 이후 번호)만 있다 → 나이 항은 그 부분집합으로 따로 맞춘다.
-[입력]  data/processed/panel/bike_week.parquet (테스트 행 제외)
-[출력]  output/tables/risk_irr_nb.csv (음이항 IRR, 전체·부품별), risk_hr_cox.csv (Cox HR), risk_hypotheses.csv (가설 표)
-[실행]  .venv/bin/python py/risk_interpret.py   (약 3 ~ 5분)
+자전거 5,000대 표본(학습+검증 기간, 다음 주 주행이 있는 행)으로 두 모형을 맞춘다.
+  음이항 회귀   주행거리 offset, 자전거 단위 군집 표준오차. IRR(1 SD 또는 1단위당 신고율 배수). 전체와 부품별
+  Cox 비례위험  시간축은 마지막 신고 이후 주행거리(start = km_since_rep, stop = start + km_next), 사건은 다음 주 신고.
+                차종으로 층화하고 자전거 단위로 군집 보정한다. HR은 같은 거리를 달렸을 때의 상대 위험이다
+런북 06의 가설: H1 누적 거리 +, H2 오르막 +(체인·페달), H3 비·젖은 노면 +(체인), H4 출퇴근/여가는 부품별로 부호가 다름,
+H5 재배치 +(안장·페달), H6 수리 뒤 −, H7 나이 +.
+
+주의:
+  - sh_*는 이번 주 값이다. 원래는 다음 주 주행 특성이 맞지만 패널에 없어서 이번 주 값으로 대신한다.
+  - age_days는 2022-03 이후 번호(나이를 아는 자전거)에만 있어서 나이 항은 그 부분집합으로 따로 맞춘다.
+
+입력: data/processed/panel/bike_week.parquet (테스트 행 제외)
+출력: output/tables/risk_irr_nb.csv (음이항 IRR, 전체·부품별), risk_hr_cox.csv (Cox HR)
+실행: .venv/bin/python py/risk_interpret.py  (3~5분)
 """
 import sys
 import warnings
@@ -54,7 +56,7 @@ def sample(p):
 def nb_irr(ps, target, rhs):
     f = f"{target} ~ {rhs}"
     off = np.log(ps.km_next)
-    # alpha(과산포)는 GLM 우도를 직접 최대화해 찾는다(discrete NegativeBinomial 적합은 큰 표에서 발산하는 일이 있다 — py/nbreg.py와 같은 방식)
+    # 과산포 alpha는 GLM 우도를 직접 최대화해 찾는다. discrete NegativeBinomial은 큰 표에서 발산할 때가 있다(py/nbreg.py와 같은 방식)
     def negll(log_alpha):
         return -smf.glm(f, data=ps, family=sm.families.NegativeBinomial(alpha=float(np.exp(log_alpha))), offset=off).fit().llf
     alpha = float(np.exp(minimize_scalar(negll, bounds=(-6, 3), method="bounded", options={"xatol": 1e-2}).x))
@@ -71,7 +73,7 @@ def main():
     for name, target in TARGETS.items():
         r = nb_irr(ps, target, RHS).assign(model=name, subset="전체 표본")
         rows.append(r[~r.term.str.startswith("C(month)") & (r.term != "Intercept")])
-        # 나이 항: 나이를 아는 자전거만
+        # 나이 항은 나이를 아는 자전거만으로
         pa = ps[ps.age_known == 1]
         ra = nb_irr(pa, target, RHS + " + z_age_days").assign(model=name, subset="나이 아는 자전거")
         rows.append(ra[ra.term == "z_age_days"])

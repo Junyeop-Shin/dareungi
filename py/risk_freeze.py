@@ -1,15 +1,19 @@
-"""선택 → 고정 → 테스트 — 단계 2B-6 (런북 06)
+"""검증으로 고른 위험 모형 설정을 고정하고, 테스트 구간을 한 번 채점한다(런북 06, 2B-6).
 
-[무엇을]
-  (1) 고정: 검증으로 고른 설정(설명변수, 하이퍼파라미터, 모형별 반복 수, 보정 배율, 등급 백분위, 이유 문구)을
-      output/models/risk_spec.json 에 적는다. **테스트 전에 깃에 커밋한다.**
-  (2) 테스트(--test): 사람이 승인한 뒤 **한 번만**. 학습 + 검증(2024-01 ~ 2025-12)으로 다시 학습하고(반복 수 = 검증에서 정한 값),
-      2026-01 ~ 06 테스트 행을 채점해 베이스라인과 나란히 risk_eval_test.csv 에 저장한다. 결과를 보고 설정을 바꾸지 않는다.
-[입력]  output/models/risk_spec_valid.json (py/risk_lgb.py), data/processed/panel/bike_week.parquet
-[출력]  output/models/risk_spec.json, (--test) output/models/risk_{name}_final.txt, output/tables/risk_eval_test.csv,
-        risk_calibration_test.csv, output/models/risk_scores_test.parquet
-[실행]  .venv/bin/python py/risk_freeze.py           # 고정만
-        .venv/bin/python py/risk_freeze.py --test    # 테스트(승인 뒤 한 번)
+기본 실행은 설정 고정만 한다. 설명변수, 하이퍼파라미터, 모형별 반복 수, 보정 배율, 등급 백분위, 이유 문구를
+output/models/risk_spec.json에 적는다. 이 파일은 테스트 전에 커밋해 둔다.
+
+--test를 주면 학습+검증(2024-01 ~ 2025-12) 전체로 검증 때 정한 반복 수만큼 다시 학습하고,
+2026-01 ~ 06 테스트 행을 채점해 베이스라인과 나란히 저장한다.
+
+주의: 테스트는 한 번만 돌린다. 결과를 보고 설정을 바꾸지 않는다.
+
+입력: output/models/risk_spec_valid.json (risk_lgb.py), data/processed/panel/bike_week.parquet
+출력: output/models/risk_spec.json
+      --test: output/models/risk_{name}_final.txt, risk_scores_test.parquet,
+              output/tables/risk_eval_test.csv, risk_calibration_test.csv
+실행: .venv/bin/python py/risk_freeze.py           (고정만)
+      .venv/bin/python py/risk_freeze.py --test    (고정 + 테스트 채점)
 """
 import json
 import sys
@@ -95,7 +99,7 @@ REASONS = {
         "high": None,
         "low": "지난 신고 뒤 정비 기록 없음"
     }
-}   # 사람이 이해되는 방향만, None = 이유로 안 보임(2026-10-08)
+}   # 점검자에게 보여 줄 위험 이유 문구. 납득되는 방향만 적고, None인 방향은 이유로 표시하지 않는다
 
 
 def freeze():
@@ -138,7 +142,7 @@ def test(spec):
         te_scores[f"rate_{name}"], te_scores[f"count_{name}"] = rate, cnt
         for col, lab in (("risk_rate", "위험률"), ("risk_count", "기대 신고 수")):
             results.loc[f"LGB {name} {lab}", list(evaluate(v.assign(y_next=v.y), col))] = pd.Series(evaluate(v.assign(y_next=v.y), col))
-        # 위험률 순위에서 최근 4주 주행 0인 자전거 제외한 판
+        # 최근 4주 주행이 0인 자전거를 위험률 순위에서 뺀 판(spec의 rank_rule)
         v2 = v.assign(risk_rate=np.where(v.km_4w > 0, v.risk_rate, -np.inf))
         results.loc[f"LGB {name} 위험률(4주 주행 있는 자전거만)", list(evaluate(v2.assign(y_next=v2.y), "risk_rate"))] = pd.Series(evaluate(v2.assign(y_next=v2.y), "risk_rate"))
         bl = BASELINES if name == "all" else BASELINES[1:]

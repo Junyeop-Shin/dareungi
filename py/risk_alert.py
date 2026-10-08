@@ -1,14 +1,15 @@
-"""헛대여 경보 검증 — 단계 2B-5 (런북 06): "지금 고장 났을 것 같은 자전거" 신호가 실제 신고로 이어지는가
+"""연속 헛대여 경보가 실제 고장 신고로 이어지는지 검증한다(런북 06, 2B-5).
 
-[무엇을]
-같은 자전거가 **연속 두 번** 헛대여(같은 대여소 반납, 2 ~ 3분)되면 경보를 낸다(같은 자전거 24시간 안 중복 경보는 첫 번째만).
-경보 뒤 7일 안에 신고된 비율(적중률)과 경보 → 신고까지의 선행 시간을 잰다. 비교 기준은 "아무 통행이나 고른 뒤 7일 안 신고 비율".
-민감도: 헛대여 기준 2 ~ 3분 / 2 ~ 5분, 연속 2회 / 3회.
-서울은 자전거별 신고가 공개돼 이런 검증이 가능하다(선행 사례 RIDEY의 "신고보다 중앙값 20 ~ 25시간 앞섬" 주장을 독립 확인).
-[입력]  DuckDB trips_seq(2A-7), fail(2A-8)
-[출력]  output/tables/risk_alert_valid.csv (기준별 경보 수·적중률·선행 시간·기준선 대비 배수), risk_alert_by_year.csv
-[실행]  .venv/bin/python py/risk_alert.py   (1 ~ 2분)
-검증은 학습 + 검증 기간(~ 2025-12)으로 한다. 2026년은 테스트 기간이라 표에서 따로 둔다.
+같은 자전거가 같은 대여소에 2~3분 만에 반납되는 일이 두 번 연속 생기면 경보로 본다. 같은 자전거의 24시간 안
+중복 경보는 첫 번째만 남긴다. 경보 뒤 7일(1일) 안에 신고된 비율과 신고까지 걸린 시간을, 아무 통행이나 고른
+기준선의 7일 안 신고 비율과 비교한다. 헛대여 기준(2~3분, 2~5분)과 연속 횟수(1~3회)를 바꿔 민감도도 본다.
+서울은 자전거별 신고가 공개돼 있어서 RIDEY의 "경보가 신고보다 중앙값 20~25시간 앞선다"는 주장을 따로 확인할 수 있다.
+
+주의: 요약표(risk_alert_valid)는 ~2025-12만 쓴다. 2026년은 테스트 기간이라 연도별 표에만 따로 표시한다.
+
+입력: DuckDB trips_seq, fail
+출력: output/tables/risk_alert_valid.csv (기준별 경보 수, 적중률, 선행 시간, 기준선 대비 배수), risk_alert_by_year.csv
+실행: .venv/bin/python py/risk_alert.py  (1~2분)
 """
 import sys
 from pathlib import Path
@@ -22,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def alerts(con, sham_col, k):
-    """연속 k회 헛대여 → 경보 시각. 24시간 안 중복은 첫 번째만"""
+    """연속 k회 헛대여를 경보로 잡아 연도별 적중률·선행 시간을 돌려준다. 24시간 안 중복 경보는 첫 번째만"""
     lags = " AND ".join(f"lag({sham_col}, {i}) OVER w" for i in range(1, k)) or "TRUE"      # k = 1이면 헛대여 한 번마다
     con.execute(f"""
     CREATE OR REPLACE TEMP TABLE alerts AS
@@ -40,7 +41,7 @@ def alerts(con, sham_col, k):
 
 
 def baseline(con):
-    """기준선: 무작위 통행 뒤 7일 안 신고 비율(연도별, 표본 30만 건)"""
+    """기준선: 통행 30만 건을 무작위로 뽑아 그 뒤 7일(1일) 안에 신고된 비율. 연도별"""
     return con.sql("""
     SELECT year(t.rent_dt) AS y, count(*) AS n,
            avg(CASE WHEN f.reg_ts <= t.rent_dt + INTERVAL 7 DAY THEN 1.0 ELSE 0 END) AS base_7d,

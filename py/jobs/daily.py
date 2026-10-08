@@ -1,34 +1,36 @@
-"""매일 갱신 — 단계 3A-5·3A-7 (런북 07). 매일 07:00 (collect_* 뒤)
+"""매일 갱신(런북 07, 3A-5·3A-7). 매일 07:00, collect_* 작업 뒤에 돈다.
 
-[무엇을]
-  1. trips_live_x: 최근 21일 API 대여이력에 2A-7과 같은 표시·지형·날씨·재배치를 붙인다(통행 구분, 직선거리·고도차, 대여 시각 날씨, 직전 반납 대비 이동).
-  2. 주별 요약(bw_usage·bw_fail)을 이번 주(월요일이면 지난주도)만 다시 만들어 교체한다 — 끝난 주의 요약은 변하지 않으므로.
-  3. 패널(panel)을 주별 요약 전체 위에서 다시 계산한다(2A-9와 같은 SQL, py/panel_sql.py). panel_latest = 가장 최근 완결 주.
-  4. 데이터 품질 점검(3A-7): 시간대별 대여 건수가 지난주 같은 시간의 30% 미만, 작업 실패, 26시간 이상 안 돈 작업, 신고 0건인 날.
-  5. bike_card(시민 조회용 집계, 런북 08 정의) → 스냅샷 발행.
-  6. actuals.refresh(): daily_district → weekly_actual, daily_reports, forecast_track(08a 추가 스냅샷) → 발행.
-[전제] init_ops.py로 과거 주별 요약이 들어 있어야 '마지막 신고 이후 누적'이 이어진다.
-[알려진 공백] 반기 파일(~2026-06-30)과 API 수집 시작(2026-10-04) 사이 석 달은 비어 있다. tbCycleRentData는 과거 날짜도 조회되므로
-       collect_rent.py YYYY-MM-DD 로 하루씩 채울 수 있다(약 100일 × 24시간대). 채우기 전까지 그 기간의 누적은 과소.
-[출력] ops.duckdb: trips_live_x, bw_usage, bw_fail, panel, panel_latest, bike_card, quality_log; serving/*.parquet
-[실행] .venv/bin/python py/jobs/daily.py
-       .venv/bin/python py/jobs/daily.py --rebuild-from 2026-06-29   (백필 뒤 한 번: 그 주부터 주별 요약을 API 자료로 다시)
+순서:
+  1. trips_live_x: 최근 21일 API 대여이력에 2A-7과 같은 파생 열을 붙인다(통행 구분, 직선거리·고도차,
+     대여 시각 날씨, 직전 반납 대여소와 다른 곳에서 빌렸는지).
+  2. 주별 요약(bw_usage·bw_fail)은 이번 주만 다시 만든다(월요일이면 지난주도). 끝난 주는 바뀌지 않는다.
+  3. 패널(panel)을 주별 요약 전체로 다시 계산한다(2A-9와 같은 SQL, py/panel_sql.py). panel_latest는 가장 최근 완결 주.
+  4. 데이터 품질 점검(3A-7): 시간대별 대여가 지난주 같은 시간의 30% 미만, 작업 실패, 26시간 넘게 안 돈 작업.
+  5. bike_card(시민 조회용, 런북 08)와 reported_recent를 만들어 스냅샷으로 발행한다.
+  6. actuals.refresh()로 weekly_actual, daily_reports, forecast_track을 갱신해 발행한다.
+
+주의: init_ops.py로 과거 주별 요약을 넣어 둬야 '마지막 신고 이후 누적'이 끊기지 않는다.
+반기 파일(~2026-06-30)과 API 수집 시작(2026-10-04) 사이 석 달은 따로 채워야 한다. tbCycleRentData는 과거 날짜도
+조회되므로 backfill_rent.py(또는 collect_rent.py YYYY-MM-DD)로 받는다. 채우기 전에는 그 기간 누적이 적게 잡힌다.
+
+출력: ops.duckdb trips_live_x, bw_usage, bw_fail, panel, panel_latest, bike_card, reported_recent, quality_log; serving/*.parquet
+실행: .venv/bin/python py/jobs/daily.py
+      .venv/bin/python py/jobs/daily.py --rebuild-from 2026-06-29   # 백필 뒤 한 번, 그 주부터 주별 요약을 API 자료로 다시 만든다
 """
 import datetime as dt
 import sys
 from pathlib import Path
 
-import pandas as pd
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from common import ROOT, alert, connect, job_lock, log_run, table_exists   # noqa: E402
-from panel_sql import BW_FAIL_SELECT, BW_USAGE_SELECT, PANEL0_SQL, PANEL_SQL, cl_cols_expr, sh_cl_expr   # noqa: E402
+from panel_sql import BW_FAIL_SELECT, BW_USAGE_SELECT, PANEL0_SQL, PANEL_SQL, REPAIR_H, cl_cols_expr, sh_cl_expr   # noqa: E402
 from publish import build_status, publish   # noqa: E402
 import actuals                               # noqa: E402
 
-DETOUR = 1.18          # 2A-4 우회율 중앙값(거리 오류 행을 채울 때)
+DETOUR = 1.18          # 우회율 중앙값(2A-4). 이동거리가 잘못 찍힌 행을 직선거리로 채울 때 곱한다
 LIVE_DAYS = 21
-REBUILD_FROM = None    # '--rebuild-from YYYY-MM-DD'(월요일): 그 주부터 주별 요약을 다시 만든다(백필 뒤 한 번)
+REBUILD_FROM = None    # --rebuild-from YYYY-MM-DD(월요일)로 주면 그 주부터 주별 요약을 다시 만든다
 
 
 def build_trips_live_x(con, since=None):
@@ -76,12 +78,13 @@ def refresh_weeks(con, today, cut=None):
         SELECT f.bike_id, f.reg_ts, f.kind, n.rent_dt AS next_rent_dt, date_diff('hour', f.reg_ts, n.rent_dt) AS gap_h
         FROM fail_live f ASOF LEFT JOIN (SELECT bike_id, rent_dt FROM trips_live) n ON f.bike_id = n.bike_id AND f.reg_ts <= n.rent_dt""")
         con.execute("DELETE FROM bw_fail WHERE wk >= ?", [cut])
-        con.execute("INSERT INTO bw_fail BY NAME " + BW_FAIL_SELECT.format(src="fail_gap_live", extra_where=f"WHERE reg_ts >= DATE '{cut}'"))
+        con.execute("INSERT INTO bw_fail BY NAME " + BW_FAIL_SELECT.format(src="fail_gap_live", extra_where=f"WHERE reg_ts >= DATE '{cut}'", repair_h=REPAIR_H))
     return cut
 
 
 def add_new_bikes(con):
-    """API에서 처음 보이는 자전거(분석 DB 이후 도입)를 bike_info에 더한다. 처음 등장 = 도입으로 본다(2022-03 이후 번호라 나이를 안다)"""
+    """API에서 처음 보이는 자전거(분석 DB 이후 도입)를 bike_info에 넣는다.
+    2022-03 이후 번호라서 처음 나타난 날을 도입일로 봐도 된다."""
     n0 = con.execute("SELECT count(*) FROM bike_info").fetchone()[0]
     con.execute("""INSERT INTO bike_info BY NAME
         SELECT bike_id, mode(bike_type) AS bike_type, min(rent_dt) AS first_dt, 0.0 AS km_pre, 0 AS trips_pre, TRUE AS age_known
@@ -121,14 +124,18 @@ def quality_checks(con):
     return issues
 
 
-REPORT_DAYS = 7           # '최근 신고된 자전거'로 따로 보는 기간(점검 권장 목록에서는 빼고 따로 보여 준다). 사람 결정 2026-10-08: 14일 → 7일
+REPORT_DAYS = 7           # 이 기간 안에 신고된 자전거는 점검 권장 목록에서 빼고 '최근 신고' 목록으로 따로 보여 준다
 
 
 def build_reported_recent(con):
-    """최근 REPORT_DAYS일 안에 고장 신고된 자전거: 마지막 신고 시각, 신고 부품, 신고 건수, 신고 뒤 대여 횟수·첫 대여 시각,
-    (신고하면 대체로 대여가 막힌다: 2026-09 신고의 2.5%만 1시간 안에 다시 대여, 다음 대여까지 중앙값 약 40시간.
-     그래서 '신고 뒤 대여 없음' = 수리 대기로 보이는 자전거, '신고 뒤 대여 있음' = 점검·수리 뒤 다시 운행에 들어간 자전거로 읽는다)
-    마지막 반납 대여소·시각. 점검 대상 화면의 '최근 고장 신고된 자전거' 목록과, 점검 권장 목록에서 뺄 자전거 판별에 쓴다"""
+    """최근 REPORT_DAYS일 안에 고장 신고된 자전거 목록을 만든다.
+
+    열: 마지막 신고 시각, 신고 부품, 신고 건수, 신고 뒤 대여 횟수·첫 대여 시각, 마지막 반납 대여소·시각.
+    점검 대상 화면의 '최근 고장 신고된 자전거' 목록과, 점검 권장 목록에서 뺄 자전거를 가리는 데 쓴다.
+
+    신고되면 대체로 대여가 막힌다(2026-09 신고의 2.5%만 1시간 안에 다시 대여, 다음 대여까지 중앙값 약 40시간).
+    그래서 신고 뒤 대여가 없으면 수리 대기, 있으면 점검·수리 뒤 다시 운행에 들어간 자전거로 본다.
+    """
     station = "station_live" if table_exists(con, "station_live") else "station_base"
     con.execute(f"""
     CREATE OR REPLACE TABLE reported_recent AS
@@ -194,6 +201,6 @@ if __name__ == "__main__":
     if "--rebuild-from" in sys.argv:
         REBUILD_FROM = sys.argv[sys.argv.index("--rebuild-from") + 1]
     run()
-    actuals.refresh()                       # 주별·일별 실적과 예측 실적(자체 잠금)
+    actuals.refresh()                       # 실적·예측 성적 표. 잠금은 안에서 따로 잡는다
     from publish import run as publish_run
     publish_run(["weekly_actual", "daily_reports", "forecast_track", "data_status"])

@@ -1,10 +1,11 @@
-"""헛대여 경보 — 단계 3A (런북 07 작업표의 detect_sham). 매시 20분(대여이력 수집 직후)
+"""연속 헛대여 경보. 매시 20분, 대여이력 수집 직후에 돈다(런북 07).
 
-[무엇을] 최근 7일 대여이력(trips_live)에서 같은 자전거가 **연속 2회** 헛대여(같은 대여소 반납, 2 ~ 3분)되면 경보를 만든다.
-         2B-5에서 검증한 규칙(7일 안 신고 46%, 기준선의 5.2배). 같은 자전거 24시간 안 중복 경보는 첫 번째만.
-         경보에는 마지막 반납 대여소(어디 있나)와 그 뒤 신고가 있었는지(해소 여부)를 붙인다.
-[출력] ops.duckdb: alerts_live(bike_id, alert_ts, last_st, st_name, district, n_sham_7d, reported_after)
-[실행] .venv/bin/python py/jobs/detect_sham.py
+최근 7일 대여이력에서 같은 자전거가 같은 대여소에 2~3분 만에 반납되는 일이 두 번 연속 생기면 경보를 만든다.
+2B-5에서 확인한 규칙으로, 이런 자전거는 7일 안에 46%가 신고됐다(기준선의 5.2배).
+같은 자전거의 24시간 안 중복 경보는 첫 번째만 남기고, 마지막 반납 대여소와 그 뒤 신고 여부를 붙인다.
+
+출력: ops.duckdb alerts_live(bike_id, alert_ts, last_st, st_name, district, n_sham_7d, reported_after)
+실행: .venv/bin/python py/jobs/detect_sham.py
 """
 import sys
 from pathlib import Path

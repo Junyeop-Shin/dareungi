@@ -1,13 +1,13 @@
-"""ASOS 시간자료(서울 108) 수집과 DuckDB 적재 — 단계 2A-5 (런북 05)
+"""서울(108) ASOS 시간자료를 받아 DuckDB wx_h 테이블을 만든다(런북 05, 2A-5).
 
-[무엇을]
-공공데이터포털 '기상청 지상(종관, ASOS) 시간자료' API로 2023-07-01 ~ 2026-06-30의 시간별 기온·강수를 받아
-data/raw/weather/asos_hourly_108_202307_202606.csv 에 저장하고(이미 있으면 다시 받지 않는다),
-DuckDB 테이블 wx_h(정시마다 한 행, 빠진 시간은 앞 값으로 채움, 직전 3시간 강수 합)를 만든다.
-  rain_now  > 0 : 비 오는 중 주행      rain_prev3h > 0 : 젖은 노면 주행(비 그친 직후 포함)
-[입력]  API(인증키는 .env의 DATA_GO_KR_KEY, 코드에 쓰지 않는다). 한 달씩, 한 페이지 999행
-[출력]  data/raw/weather/asos_hourly_108_202307_202606.csv, DuckDB 테이블 wx_h, output/tables/panel_2a5_wx_checks.csv
-[실행]  .venv/bin/python py/25_weather_hourly.py   (API 약 40회, 1 ~ 2분)
+공공데이터포털 '기상청 지상(종관, ASOS) 시간자료' API로 2023-07-01 ~ 2026-06-30 시간별 기온·강수·습도·풍속을
+받아 CSV로 저장한다. CSV가 이미 있으면 다시 받지 않는다. wx_h는 정시마다 한 행이고, 빠진 시간은 앞 값으로
+채우며, 직전 3시간 강수 합(rain_prev3h)을 붙인다. 통행에 붙이면 rain_now > 0은 비 오는 중 주행,
+rain_prev3h > 0은 젖은 노면 주행(비 그친 직후 포함)으로 쓴다.
+
+입력: 공공데이터포털 API(.env의 DATA_GO_KR_KEY). 한 달씩, 페이지당 999행
+출력: data/raw/weather/asos_hourly_108_202307_202606.csv, DuckDB wx_hourly·wx_h, output/tables/panel_2a5_wx_checks.csv
+실행: .venv/bin/python py/25_weather_hourly.py  (API 약 40회, 1~2분)
 """
 import os
 import sys
@@ -29,7 +29,7 @@ START, END = "2023-07-01", "2026-06-30"
 
 
 def fetch_month(a, b):
-    """한 달치(a ~ b, 'YYYYMMDD')를 페이지를 넘기며 받는다"""
+    """a ~ b('YYYYMMDD') 구간을 페이지를 넘기며 받는다"""
     rows, page = [], 1
     while True:
         for attempt in range(4):
@@ -37,7 +37,7 @@ def fetch_month(a, b):
                                               startDt=a, startHh="00", endDt=b, endHh="23", stnIds="108", numOfRows=999, pageNo=page), timeout=60)
             try:
                 js = r.json(); break
-            except ValueError:                    # XML 오류 문구(트래픽 제한 등)면 잠시 쉬고 다시
+            except ValueError:                    # 트래픽 제한 등은 XML 오류로 온다. 잠시 쉬고 재시도
                 time.sleep(3 * (attempt + 1))
         else:
             raise RuntimeError(f"{a}: JSON 응답 없음: {r.text[:200]}")

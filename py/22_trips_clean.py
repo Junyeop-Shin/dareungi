@@ -1,20 +1,20 @@
-"""대여이력 정제와 표시(flag) — 단계 2A-2 (런북 05)
+"""대여 상세를 정제해 DuckDB trips 테이블을 만든다(런북 05, 2A-2).
 
-[무엇을]
-2A-1이 저장한 상세 Parquet(data/processed/rent/, 2023-07 ~ 2026-06, 약 1.2억 건)을 읽어 DuckDB 테이블 `trips`를 만든다.
-지우지 않고 **표시**한다 — 짧은 대여(헛대여)는 고장 신호라서 버리면 안 된다.
-  - 완전 중복(같은 자전거·대여일시·대여소) 제거
-  - bad_time   반납이 없거나 대여보다 앞선 행
-  - speed_kmh  이용거리 ÷ 이용시간
-  - sham       헛대여 후보: 같은 대여소 반납 & 2 ~ 3분 (04b에서 정한 기준. 2026년 파일에만 0 ~ 1분 기록이 있어 아래를 2분으로 자른다)
-  - sham_wide  같은 대여소 반납 & 2 ~ 5분 (민감도)
-  - round_trip 왕복: 같은 대여소 반납 & 3분 초과
-  - dist_bad   거리 기록 오류: 다른 대여소인데 거리 0, 또는 35km/h 초과
-[확인하는 것] 중복 제거 건수, bad_time 비율, 연도별 이용시간·거리·속도의 중앙값·99% 값, dist_bad·헛대여·왕복 비율,
-             이용자종류·자전거구분 분포 → output/tables/panel_2a2_checks.csv, panel_2a2_by_year.csv, panel_2a2_types.csv
-[입력]  data/processed/rent/*/*/*.parquet
-[출력]  data/db/dareungi.duckdb 의 trips 테이블(위 표시 열 포함), output/tables/panel_2a2_*.csv
-[실행]  .venv/bin/python py/22_trips_clean.py   (약 5 ~ 10분. 적재 스크립트와 동시에 돌리지 않는다 — DB 파일을 잠근다)
+2A-1이 저장한 상세 Parquet(2023-07 ~ 2026-06, 약 1.2억 건)에서 완전 중복(같은 자전거·대여일시·대여소)만
+지우고, 나머지 이상한 행은 지우지 않고 열로 표시한다. 짧은 대여(헛대여)는 고장 신호라 버리면 안 된다.
+  bad_time    반납 시각이 없거나 대여보다 앞섬
+  speed_kmh   이용거리 / 이용시간
+  sham        헛대여 후보. 같은 대여소 반납, 2~3분
+  sham_wide   같은 대여소 반납, 2~5분(민감도 확인용)
+  round_trip  왕복. 같은 대여소 반납, 3분 초과
+  dist_bad    거리 기록 오류. 다른 대여소인데 거리 0이거나 35km/h 초과
+연도별 이용시간·거리·속도 분포, 각 표시의 비율, 이용자종류·자전거구분 분포를 검증표로 남긴다.
+
+주의: 2026년 파일에만 0~1분 기록이 있어서 sham 하한을 2분으로 둔다.
+
+입력: data/processed/rent/*/*/*.parquet
+출력: DuckDB trips, output/tables/panel_2a2_checks.csv, panel_2a2_by_year.csv, panel_2a2_types.csv
+실행: .venv/bin/python py/22_trips_clean.py  (5~10분. DB 파일을 잠그므로 적재 스크립트와 동시에 돌리지 않는다)
 """
 import sys
 from pathlib import Path

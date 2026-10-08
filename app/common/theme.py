@@ -1,8 +1,13 @@
-"""공통 스타일 — 라이트·다크 어느 쪽에서도 읽히는 한 벌(2026-10-08).
-오른쪽 위 메뉴에서 테마를 바꿔도 화면이 다시 그려지지 않으므로(스트림릿 동작), 테마별로 다른 색을 넣으면 바꾸는 순간
-'어두운 카드 위 어두운 글자'가 생긴다. 그래서 카드는 반투명 배경, 보조 글자·그래프 축은 중간 밝기 회색,
-강조색은 양쪽 배경에서 대비가 나는 중간 톤만 쓴다. 지도 바탕만 그릴 때의 테마(st.context.theme.type)를 따른다.
-도넛·게이지·3D·그라데이션은 쓰지 않는다. 테마 기본값은 .streamlit/config.toml"""
+"""공통 스타일(CSS, 색, plotly 템플릿).
+
+Streamlit은 오른쪽 위 메뉴에서 테마를 바꿔도 화면을 다시 그리지 않는다. 테마별로 다른 색을 넣으면 바꾸는 순간
+어두운 카드 위에 어두운 글자가 남는다. 그래서 테마별 색 대신 양쪽에서 읽히는 색 한 벌을 쓴다:
+카드는 반투명 배경, 보조 글자와 그래프 축은 중간 밝기 회색, 강조색은 양쪽 배경에서 대비가 나는 중간 톤.
+지도 바탕만 그릴 때의 테마(st.context.theme.type)를 따른다.
+차트에는 도넛·게이지·3D·그라데이션을 쓰지 않는다.
+
+테마 기본값은 .streamlit/config.toml에 있다.
+"""
 import plotly.graph_objects as go
 import plotly.io as pio
 import streamlit as st
@@ -26,7 +31,7 @@ def mode():
 
 
 def P():
-    """색 묶음(양쪽 테마 공통) + 지도 바탕(그릴 때의 테마)"""
+    """색 묶음(양쪽 테마 공통)에 지도 바탕 스타일(그릴 때의 테마)을 더해 돌려준다."""
     return COLORS | {"map_style": mode()}
 
 
@@ -76,7 +81,7 @@ a.card-link:hover {{ text-decoration: underline; }}
 
 
 def apply(top_pad="4.6rem"):
-    """페이지마다 맨 처음 부른다. 돌려주는 것: 색 묶음"""
+    """페이지마다 맨 처음 불러 CSS를 넣고 색 묶음을 돌려준다."""
     p = P()
     st.markdown(css(p, top_pad), unsafe_allow_html=True)
     return p
