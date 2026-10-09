@@ -7,19 +7,16 @@ ROOT=$(pwd)
 USER_NAME=$(whoami)
 
 sudo apt-get update -y
-sudo apt-get install -y python3 python3-venv python3-pip git curl debian-keyring debian-archive-keyring apt-transport-https
+sudo apt-get install -y python3 python3-venv python3-pip git curl libgomp1   # libgomp1: lightgbm이 리눅스에서 쓴다
 python3 -m venv .venv
 .venv/bin/pip install -q --upgrade pip
 .venv/bin/pip install -q -r requirements.txt
 mkdir -p data/db data/interim serving logs
 
-# Caddy (HTTPS 자동)
-if ! command -v caddy >/dev/null; then
-  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
-  sudo apt-get update -y && sudo apt-get install -y caddy
-fi
-sudo cp deploy/Caddyfile /etc/caddy/Caddyfile && sudo systemctl restart caddy
+# Caddy (HTTPS 자동): 우분투 기본 저장소 판(24.04는 2.6.2). Caddy 공식 저장소(cloudsmith)는 2026-10-10에 402로 거절돼 쓰지 않는다.
+# 설정 파일(/etc/caddy/Caddyfile)은 여기서 건드리지 않는다. 주소와 비밀번호를 넣는 일은 deploy/README.md 순서대로 손으로 한다
+# (전에는 예시 파일을 매번 덮어써서, 다시 실행하면 넣어 둔 주소·비밀번호가 지워졌다).
+sudo apt-get install -y caddy
 
 # Streamlit 상시 실행: 관리자 앱(8501) 하나. 시민 조회 앱은 2026-10-10에 없앴다(자전거 조회는 관리자 앱의 한 화면)
 for app in admin:app/admin/Home.py:8501; do
@@ -75,5 +72,8 @@ EOF
 done
 sudo systemctl daemon-reload
 sudo systemctl enable --now dareungi-app-admin.service
-for name in "${!JOBS[@]}"; do sudo systemctl enable --now dareungi-$name.timer; done
-echo "설치 끝. .env를 만들고 'systemctl list-timers | grep dareungi'로 확인하세요."
+# 타이머는 등록만 하고 켜지 않는다. .env와 운영 DB가 없는 채로 돌면 빈 DB가 생기고, DB를 옮기는 중에 돌면 파일이 깨진다.
+# 이미 켜져 있는 타이머는 그대로 돈다(다시 실행해도 멈추지 않는다).
+for name in "${!JOBS[@]}"; do sudo systemctl enable dareungi-$name.timer; done
+echo "설치 끝. deploy/README.md 순서대로 .env와 운영 DB를 넣은 뒤 타이머를 켠다:"
+echo "  for t in ${!JOBS[*]}; do sudo systemctl start dareungi-\$t.timer; done"

@@ -1,10 +1,10 @@
-# Caddy — HTTPS 자동 발급 + Streamlit 앱 역프록시. 도메인을 바꾼 뒤 /etc/caddy/Caddyfile 로 복사한다.
-# 관리자 앱(8501) 하나만 연다. 접근 제한(basic_auth)을 건다. 시민 조회 앱은 2026-10-10에 없앴다.
-admin.dareungi.example.com {
-    basic_auth {
-        # 'caddy hash-password'로 만든 해시를 넣는다
-        manager $2a$14$REPLACE_WITH_HASH
-    }
+# Caddy — HTTPS 인증서를 자동으로 받고 Streamlit 앱(8501, 서버 안에서만 열림)으로 넘긴다. 주소를 바꾼 뒤 /etc/caddy/Caddyfile 로 복사한다.
+# 화면은 누구나 볼 수 있게 열어 둔다(결정 로그 2026-10-10: 공개 데이터만 보여 주고 자소서·면접에서 주소만 주면 되게).
+# 다시 잠그려면 아래 basicauth 블록의 #을 지우고 'caddy hash-password'로 만든 해시를 넣는다.
+ttareungi-care.duckdns.org {
+    # basicauth {          # Caddy 2.6(우분투 24.04 기본)의 이름. 2.8부터는 basic_auth
+    #     manager <caddy hash-password 로 만든 해시>
+    # }
     reverse_proxy 127.0.0.1:8501
     encode gzip
 }
