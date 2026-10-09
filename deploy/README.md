@@ -27,6 +27,12 @@ scp data/db/ops.duckdb data/interim/station_master.csv data/interim/station_clus
 - `dareungi-<job>.timer/.service`: cron 대신 systemd 타이머(맥북 cron과 같은 주기). `systemctl list-timers`로 확인.
 - Caddy: `deploy/Caddyfile`의 두 도메인과 관리자 비밀번호 해시(`caddy hash-password`)를 바꾼 뒤 `/etc/caddy/Caddyfile`로. 하위 경로보다 하위 도메인 두 개를 권장(Streamlit은 하위 경로 설정이 번거롭다).
 
+## 설치 뒤 확인
+- 경보: `.venv/bin/python py/common.py alert-test` → 슬랙(또는 디스코드) 채널에 시험 알림이 오는지
+- 시험: `.venv/bin/python tests/test_ops.py`, `tests/test_analysis.py`, `tests/smoke_app.py`(스냅샷이 발행된 뒤)
+- 화면: 서버에서 앱을 띄운 뒤 `tests/screens.py`(크롬과 playwright가 있어야 한다. 없으면 브라우저로 네 화면을 직접 확인)
+- ARM 서버(예: Oracle Cloud 무료 등급)에서는 이 설치 스크립트를 아직 돌려 보지 않았다. lightgbm·duckdb 설치에서 걸리면 그 오류부터 본다
+
 ## 운영 전 점검표(런북 07·08)
 - [ ] 같은 시간대 두 번 수집해도 결과 같음(멱등)
 - [ ] 서버를 1시간 멈췄다 켜도 빠진 시간대가 채워짐(따라잡기)

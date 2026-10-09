@@ -88,11 +88,9 @@ with st.container(border=True, key="lookup_box"):          # key: 휴대폰에�
                 f'<a class="pick" href="./lookup?bike={b}" target="_self">SPB-{b:05d} <span>{why}</span></a>' for b, why in picks) + '</div>', unsafe_allow_html=True)
     if q and not (bid is not None and found):          # 결과가 없을 때도 탭 이름은 이 화면 이름으로(넣은 값을 주석에 넣어 매번 다시 실행되게 한다)
         st.html(f"<script>document.title = '자전거 조회 · 따릉이 정비 현황' /* {re.sub(r'[^0-9A-Za-z-]', '', q)} */</script>", unsafe_allow_javascript=True)
-    if not q:
-        pass
-    elif bid is None:          # 안내는 입력칸 바로 아래에 두 줄로(무엇이 문제인지 / 어떻게 하면 되는지)
+    if q and bid is None:          # 안내는 입력칸 바로 아래에 두 줄로(무엇이 문제인지 / 어떻게 하면 되는지)
         st.markdown('<div class="lk-msg" role="status"><b>번호를 읽지 못했습니다.</b><br>번호의 숫자 부분을 넣어 주세요. 예: SPB-74216 → 74216</div>', unsafe_allow_html=True)
-    elif not found:
+    elif q and not found:
         st.markdown(f'<div class="lk-msg" role="status"><b>SPB-{bid:05d}의 최근 90일 기록이 없습니다.</b><br>'
                     '번호를 다시 확인해 주세요. 번호가 맞다면 최근 90일 동안 이용되지 않은 자전거입니다.</div>', unsafe_allow_html=True)
 

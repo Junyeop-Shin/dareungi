@@ -91,7 +91,9 @@ from prep import to_utf8, std_name, read_any, data_files, make_utf8_folder
 - **주 단위 신고 건수는 대부분 이용량이 정한다**(변동의 70~85%). 신고율 쪽에서 크게 움직이는 것은 수준 변화, 타이어 계절성(연중 2.4배), 한파(−4℃ 이하 1.33배)뿐이다. 요일 효과(월 1.10, 토 0.87)는 기간이 달라도 같다. 더위·전날 비는 효과가 없거나 작다. 변수 목록은 `docs/variables_v1.md`. 학습에서 `no_service`, `report_anomaly`인 날은 뺀다.
 - **노출은 대여건수(`rentals`)다**(체크포인트 C, 2026-10-05. 단계 0의 "노출 = 이동거리"를 바꿨다): 이용시간·이동거리보다 AIC 약 195 낮고 검증 오차도 작다. 한파 변수는 `cold_wave`와 `winter_anom`을 둘 다 넣는다. 전날 비는 전체로는 효과가 없고 부품별로 갈린다. 부품별로 모형을 따로 맞춘다. 음이항 회귀 함수는 `py/nbreg.py`.
 - **예측(1C)**: 과제는 부품별 앞으로 7일 합계. 코드는 `py/fc.py`(과제·나이브·시나리오·채점), `py/fc_models.py`(음이항·LightGBM·ARIMAX), `py/fc_dl.py`(GRU). `py/fc_expo.py`(대여량 모형: 예보 오차가 섞인 날씨로 학습한 LightGBM), `py/forecast/kma_forecast.py`(기상청 과거 예보 → 원점별 앞으로 7일 예보, 시나리오 B. 기준 시나리오), `py/forecast/weather_forecast.py`(JMA 예보, 참고). 대여량 모형은 기상청 예보로 학습한 음이항. 예측 모형은 음이항(페달만 예보로 학습한 판)(`output/models/selection.csv`). `make_base()`는 기본으로 테스트 구간 원점을 만들지 않는다. **테스트 구간 예측·채점은 사람이 승인한 뒤 한 번만.** 맥에서는 lightgbm을 torch보다 먼저 import하고 torch 스레드를 1개로 둔다(안 그러면 프로세스가 죽거나 멈춘다).
-- **운영 파이프라인(3A)**: 작업은 `data/db/.ops.lock` 잠금을 쓰므로 동시에 두 개를 돌리지 않는다. 대시보드는 `serving/*.parquet`만 읽는다. 중기예보 API는 2026-10-07 승인돼 수집 중. 주간 부품 예측은 최근 4주 신고율 × 대여량 예측(`py/fc_ops.py`): 예보판(1C S1_B)을 보여 주고 달력판은 대체·병행 기록, 2026-10-12부터 12주 비교(결정 로그 2026-10-08). 신고율 음이항(1C 선택 모형)은 운영에 쓰지 않는다. crontab 등록은 사람이 한다.
+- **운영 파이프라인(3A)**: 작업은 `data/db/.ops.lock` 잠금을 쓰므로 동시에 두 개를 돌리지 않는다. 대시보드는 `serving/*.parquet`만 읽는다. 중기예보 API는 2026-10-07 승인돼 수집 중. 주간 부품 예측은 최근 4주 신고율 × 대여량 예측(`py/fc_ops.py`): 예보판(1C S1_B)을 보여 주고 달력판은 대체·병행 기록, 2026-10-12부터 12주 비교(결정 로그 2026-10-08). 신고율 음이항(1C 선택 모형)은 운영에 쓰지 않는다. 주간 예측은 유형 7칸(전체 + 타이어·체인·안장·페달 + 단말기·기타, `fc_ops.ALL`. 단말기·기타는 2026-10-10 추가)을 낸다. 맥북 crontab은 2026-10-09에 사람이 등록했고 경보는 슬랙으로 간다(`ALERT_WEBHOOK`).
+- **운영 감시(2026-10-10)**: 위험 모형은 `risk_history`·`risk_eval`로 매주 채점한다(`py/jobs/risk_track.py`). 재학습 기준은 `docs/pipeline.md`(대여량 모형: 최근 12주 오차가 기준값보다 크면 검토 + 매년 1월, 위험 모형: 채점 8주 뒤 무작위 대비 2.5배). 자료 내용 점검은 `daily.data_checks`. 푸시마다 깃허브에서 `tests/test_ops.py`·`test_analysis.py`·pyflakes가 돈다.
+- **화면 원칙(2026-10-09 ~ 10)**: 용어는 '예측'·'예측 구간'·'기준값', 아이콘·이모지 없음, 확률은 %가 아니라 평균 대비 배수, 고장 판정처럼 들리는 말 피함, 강조색은 초록 하나(주황은 갱신이 밀린 자료에만). 화면 파일을 고치면 Streamlit 서버를 다시 띄워야 반영된다. 화면 모양이 기대는 Streamlit 내부 이름표는 `docs/pipeline.md` 끝 절.
 - **위험 모형 테스트는 2026-10-07에 한 번 열었다**(`risk_eval_test.csv`). 다시 돌리지 않는다. 결과를 보고 `risk_spec.json`을 바꾸지 않는다. 점검 등급·순위는 2026-10-08부터 다음 주 신고 확률 기준이고 화면에는 평균 대비 배수만 보여 준다(모형·계수는 그대로).
 - **패널(2A-9)**: `km_next`·`repaired_likely`는 라벨 쪽 정보라 2B 설명변수로 쓰지 않는다. 대여소 군집은 2025-06-30까지로만 만든다. 2B 분할: 학습 2024-01 ~ 2025-06, 검증 2025-07 ~ 12, 테스트 2026-01 ~.
 - **대여이력 적재(2A-1, 2026-10-07)**: `data/db/dareungi.duckdb`는 적재 스크립트가 잠그므로 분석 스크립트는 메모리 DB로 Parquet을 읽는다. 2026년 상세 행 수(1,851만)가 일별 대여건수(1,798만)보다 3% 많다 — 2026년 파일에만 있는 0 ~ 1분 기록 때문으로 보인다.
@@ -111,7 +113,8 @@ from prep import to_utf8, std_name, read_any, data_files, make_utf8_folder
 | `docs/decision_log.md` | 결정과 근거 수치 |
 | `docs/notes/01~07` | 단계별 메모(전처리·EDA·모델 설계·레짐 원인·개체 패널·위험 모형·강건성). **처리나 결정이 생기면 갱신한다** |
 | `docs/report_stage1.md`, `docs/risk_model_card.md`, `docs/proposal/proposal_draft.md` | 단계 1 보고서 초안, 위험 모형 카드, 서울시 제안 초안 |
-| `docs/pipeline.md`, `docs/panel_dictionary.md`, `docs/load_log.csv` | 운영 파이프라인 작업표·스케줄·복구, 패널 변수 사전, 대여이력 적재 기록 |
+| `docs/pipeline.md`, `docs/panel_dictionary.md`, `docs/load_log.csv` | 운영 파이프라인 작업표·스케줄·복구·재학습 기준·Streamlit 의존 목록, 패널 변수 사전, 대여이력 적재 기록 |
+| `docs/handoff_2026-10-09.md` | 2026-10-09 ~ 10 화면·운영 작업의 항목별 기록(무엇을 왜 바꿨는지) |
 | `docs/phase0_result.md`, `docs/schema_map.csv` | 단계 0 결과, 열 이름 대응표 |
 | `docs/reference/01~10`, `04b`, `08a` | 1차 분석 검토·조사 자료, 레짐 원인 분석 계획(04b), 대시보드 화면 설계(08a, 08 문서와 다르면 이것을 따른다) |
 
@@ -124,9 +127,9 @@ from prep import to_utf8, std_name, read_any, data_files, make_utf8_folder
 | `build/` | 1A: 원본을 날짜별·자전거별로 합산(`use_daily`, `rent_history_daily`, `bike_month`), 고장신고 빠진 날 API 수집(`failure_gaps`), 일별 신호(`day_signal`), 공휴일 표 받기(`holidays`) |
 | `panel/` | 2A: `21_rent_to_parquet` ~ `29_panel` 대여이력 적재 → 정제 → 대여소·고도 → 날씨 → 군집 → 통행 테이블 → 신고 결합 → 자전거×주 패널. **같은 원본을 두 번 적재하면 중복** |
 | `forecast/` | 1C·운영 예측: 기상청 과거 예보 정리(`kma_forecast`, JMA는 참고 `weather_forecast`), 부록 B 사후 분석(`fc_posthoc`), 보고서 그림(`report_figs`), 운영 대여량 모형 고정·재현(`fc_ops_fit`), 테스트 뒤 주 비교(`fc_ops_compare`), 강건성 점검(`robustness`, `docs/notes/07`) |
-| `risk/` | 2B: 평가·베이스라인(`risk_eval`), LightGBM 포아송 + km offset(`risk_lgb`), 해석 모형, 헛대여 경보 검증, 순위 안정성(`risk_stability`), 설정 고정·테스트(`risk_freeze --test`는 **사람 승인 뒤 한 번만**) |
+| `risk/` | 2B: 평가·베이스라인(`risk_eval`), LightGBM 포아송 + km offset(`risk_lgb`), 해석 모형, 헛대여 경보 검증, 순위 안정성(`risk_stability`), 설정 고정·테스트(`risk_freeze --test`는 **사람 승인 뒤 한 번만**), 도입 효과 시나리오(`impact_scenario`, 저장된 테스트 결과만 읽음) |
 | `regime/` | 04b 레짐 원인 사후 분석(`rc_*`). 결과는 `docs/notes/04` |
-| `jobs/` | 3A 운영 파이프라인: 수집(대여이력·고장신고·날씨·대여소), 경보, 매시(`hourly`: 최근 신고 목록·자전거 위치)·매일(`daily`, 실적은 `actuals`)·매주(`weekly`) 갱신, 스냅샷 발행(`serving/`). 운영 DB `data/db/ops.duckdb` |
+| `jobs/` | 3A 운영 파이프라인: 수집(대여이력·고장신고·날씨·대여소), 경보, 매시(`hourly`: 최근 신고 목록·자전거 위치)·매일(`daily`, 실적은 `actuals`)·매주(`weekly`) 갱신, 위험 모형 이력·채점(`risk_track`), 스냅샷 발행(`serving/`). 운영 DB `data/db/ops.duckdb` |
 
 **앱·배포·노트북·데이터**
 
@@ -134,7 +137,7 @@ from prep import to_utf8, std_name, read_any, data_files, make_utf8_folder
 |---|---|
 | `app/admin/`, `app/common/` | 3B 대시보드: 관리자 앱(한눈에 보기·유형별 고장 신고 예측·점검 대상·자전거 조회) 8501. 시민 조회 앱은 2026-10-10에 없앴다. `serving/*.parquet`만 읽는다. 테마는 `.streamlit/config.toml` |
 | `deploy/` | 서버 1대 배포(설치 스크립트, systemd 타이머, Caddy) |
-| `tests/` | `test_ops.py` 운영 파이프라인 회귀 시험(빈 응답·트랜잭션, 잠금, 재수집 시간대, 예보 문자열, 신고율 7일 컷), `smoke_app.py` 화면 예외 시험, `screens.py` 화면 캡처(→ `output/screens/`) |
+| `tests/`, `.github/workflows/` | `test_ops.py` 운영 파이프라인 회귀 시험 10개, `test_analysis.py` 분석 정의 시험(인코딩, 신고·대여 세는 방법), `smoke_app.py` 화면 예외 시험, `screens.py` 화면 캡처(→ `output/screens/`)와 Streamlit 이름표 확인. 앞의 둘과 pyflakes는 푸시마다 깃허브에서 돈다 |
 | `notebooks/` | `00_사전검증`, `1A_Build_master`, `1A_regime`, `1A_eda`, `1B_regression`, `1C_forecast`, `1C_test` |
 | `data/raw/external/` | `events.csv`(외부 사건 날짜·출처), `fleet.csv`(공식 운영 대수, 참고용) |
 | `data/processed/` | `daily_master_v2`(3,834일 × 75열, 깃에 있음), `fail_std`, `rent/`·`rent_2021/`(대여이력 상세), `panel/bike_week.parquet` |

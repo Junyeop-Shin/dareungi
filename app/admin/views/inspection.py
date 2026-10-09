@@ -44,10 +44,10 @@ short2 = lambda t: " · ".join(texts.short_reason(x) for x in (t or "").split(" 
 
 
 # ── 지도: 목록 바로 아래에 그 목록의 자전거가 있는 대여소를 그린다 ──────────
-KIND = {   # 목록 종류별 지도 표시: 이름, 원 색(강조색과 같은 초록 하나), 대여소를 골랐을 때 보여 줄 열
-    "sham": ("대여 직후 반납 반복", p["dot"], ["자전거번호", "alert_ts", "n_sham_7d"]),
-    "rep": ("최근 신고", p["dot"], ["자전거번호", "last_report_ts", "kinds", "rentals_after", "last_rtn_dt"]),
-    "risk": ("점검 권장", p["dot"], ["자전거번호", "등급", "reasons", "last_rtn_dt"]),
+KIND = {   # 목록 종류별 지도 표시: 이름, 대여소를 골랐을 때 보여 줄 열. 원 색은 세 목록 모두 강조색과 같은 초록(p["dot"])
+    "sham": ("대여 직후 반납 반복", ["자전거번호", "alert_ts", "n_sham_7d"]),
+    "rep": ("최근 신고", ["자전거번호", "last_report_ts", "kinds", "rentals_after", "last_rtn_dt"]),
+    "risk": ("점검 권장", ["자전거번호", "등급", "reasons", "last_rtn_dt"]),
 }
 DETAIL_COLS = {
     "alert_ts": st.column_config.DatetimeColumn("최근 반납 시각", format="M/D HH:mm"),
@@ -66,7 +66,7 @@ def station_map(src, kind, title, note):
     아래에 그 대여소들의 자전거 목록이 나온다. 지도에서 원을 누르면 그 대여소 하나를 고른 것과 같다.
     고른 대여소는 표·지도 위젯의 선택 상태에서 매번 읽는다. '전체 지도 보기'를 누르면 위젯 키의 번호(ver)를 올려 두 위젯의 선택을 함께 지운다
     (대여소 하나만 남은 지도에서는 빈 곳을 눌러도 선택이 풀리지 않는다)."""
-    name, color, detail = KIND[kind]
+    (name, detail), color = KIND[kind], p["dot"]
     st.divider()
     ui.card_title(title, sub=f"{note} · {basis} 기준 최근 반납 대여소 · 원이 클수록 대수가 많음")
     base = ui.gu_layers()
@@ -122,7 +122,7 @@ def station_map(src, kind, title, note):
     detail = detail + (["대여소"] if len(shown) > 1 else [])          # 여러 곳을 골랐으면 어느 대여소의 자전거인지 적는다
     here["자전거번호"] = ui.bike_links(here.bike_id)
     if kind == "risk":
-        here["등급"] = here.grade.map(ui.grade_badge)
+        here["등급"] = here.grade.map(texts.grade_name)
         here["reasons"] = here.reasons.map(short2)
     st.dataframe(here.sort_values(detail[1] if kind != "risk" else "risk_ratio", ascending=False)[detail], hide_index=True, width="stretch",
                  column_config={k: v for k, v in DETAIL_COLS.items() if k in detail} | {"자전거번호": ui.BIKE_COL})
@@ -208,7 +208,7 @@ with st.container(border=True):
         # 순위는 부품을 가리지 않은 종합 신고 가능성(risk_ratio) 순. 부품·등급 선택은 뺐고(사람 결정 2026-10-10) 점검 권장·주의만 보여 준다
         v = risk_un[risk_un.grade.isin(texts.GRADE_ORDER[:2])].sort_values("risk_ratio", ascending=False).head(top or 200).copy()
         v["자전거번호"] = ui.bike_links(v.bike_id)
-        v["등급"] = v.grade.map(ui.grade_badge)
+        v["등급"] = v.grade.map(texts.grade_name)
         v["대여소"] = [ui.station_label(a_, b_) for a_, b_ in zip(v.last_st, v.last_st_name)]
         v["주행"] = v.km_4w / 4
         v["사유"] = v.reasons.map(short2)

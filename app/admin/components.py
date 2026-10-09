@@ -202,11 +202,6 @@ def empty(msg):
     st.markdown(f'<div class="empty">{msg}</div>', unsafe_allow_html=True)
 
 
-def grade_badge(g):
-    g = texts.grade_name(g)
-    return g
-
-
 def station_label(no, name):
     """대여소 표기. 예: '108번 서교동 사거리'"""
     if pd.isna(no):
@@ -231,17 +226,24 @@ def bike_links(ids):
 
 
 # ── 지도 공통 바탕 ─────────────────────────────────────────
+@st.cache_data(ttl=3600)
+def _map_files():
+    """대여소 위치 표와 자치구 경계선 파일. 화면을 다시 그릴 때마다(버튼 하나만 눌러도) 읽지 않도록 한 시간 동안 기억해 둔다"""
+    sm_path = data.ROOT / "data/interim/station_master.csv"
+    geo = json.load(open(Path(__file__).resolve().parents[1] / "common/seoul_gu.geojson"))
+    return (pd.read_csv(sm_path) if sm_path.exists() else None), geo
+
+
 def gu_layers():
     """지도에 늘 까는 층: 자치구 경계선과 한글 구 이름. 점검 대상 화면과 자전거 조회 화면이 같이 쓴다.
     바탕 지도(carto)는 지명이 영어뿐이라 지명 없는 바탕을 쓰고 구 이름을 직접 얹는다. 구 이름 자리는 그 구 대여소 좌표의 평균이다.
     경계선 자료: app/common/seoul_gu.geojson(통계청 센서스용 행정구역경계 2013, github.com/southkorea/seoul-maps, Apache 2.0)
     반환: (대여소 표, 경계선 층, 구 이름 층). 대여소 위치 파일이 없으면 None"""
-    sm_path = data.ROOT / "data/interim/station_master.csv"
-    if not sm_path.exists():
+    sm, geo = _map_files()
+    if sm is None:
         return None
-    sm = pd.read_csv(sm_path)
     light = theme.mode() == "light"
-    border = pdk.Layer("GeoJsonLayer", json.load(open(Path(__file__).resolve().parents[1] / "common/seoul_gu.geojson")), id="gu_border",
+    border = pdk.Layer("GeoJsonLayer", geo, id="gu_border",
                        stroked=True, filled=False, get_line_color=[70, 76, 82, 190] if light else [215, 215, 215, 170], line_width_min_pixels=1.6, pickable=False)
     gu_c = sm[sm.district.isin(DISTRICTS)].groupby("district")[["lat", "lon"]].mean().reset_index()
     return sm, border, label_layer(gu_c, "district", "gu_names", 14)

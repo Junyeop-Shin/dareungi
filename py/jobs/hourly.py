@@ -33,14 +33,14 @@ def refresh_positions(con):
     """bike_risk_latest의 위치 열(last_st, last_rtn_dt, last_st_name, district)을 지금까지의 대여 기록으로 다시 채운다.
     weekly.score_risk가 표를 만들 때 붙인 것과 같은 정의(반납 시각이 가장 늦은 대여의 반납 대여소). 반환: 위치가 바뀐 자전거 수"""
     station = "station_live" if table_exists(con, "station_live") else "station_base"
-    n = con.execute("""
-    WITH l AS (SELECT bike_id, arg_max(rtn_st, rtn_dt) AS last_st, max(rtn_dt) AS last_rtn_dt FROM trips_live WHERE rtn_dt IS NOT NULL GROUP BY 1)
-    SELECT count(*) FROM bike_risk_latest r JOIN l USING (bike_id) WHERE r.last_rtn_dt IS DISTINCT FROM l.last_rtn_dt""").fetchone()[0]
+    # 자전거별 마지막 반납을 임시 표에 한 번만 뽑아, 바뀐 대수 세기와 갱신에 같이 쓴다(대여 기록 1,300만 행을 두 번 훑지 않게)
+    con.execute("""CREATE OR REPLACE TEMP TABLE last_rtn AS
+                   SELECT bike_id, arg_max(rtn_st, rtn_dt) AS last_st, max(rtn_dt) AS last_rtn_dt FROM trips_live WHERE rtn_dt IS NOT NULL GROUP BY 1""")
+    n = con.execute("SELECT count(*) FROM bike_risk_latest r JOIN last_rtn l USING (bike_id) WHERE r.last_rtn_dt IS DISTINCT FROM l.last_rtn_dt").fetchone()[0]
     con.execute(f"""
     UPDATE bike_risk_latest AS r
     SET last_st = l.last_st, last_rtn_dt = l.last_rtn_dt, last_st_name = s.st_name, district = s.district
-    FROM (SELECT bike_id, arg_max(rtn_st, rtn_dt) AS last_st, max(rtn_dt) AS last_rtn_dt FROM trips_live WHERE rtn_dt IS NOT NULL GROUP BY 1) l
-    LEFT JOIN {station} s ON l.last_st = s.st_no
+    FROM last_rtn l LEFT JOIN {station} s ON l.last_st = s.st_no
     WHERE r.bike_id = l.bike_id""")
     return n
 
