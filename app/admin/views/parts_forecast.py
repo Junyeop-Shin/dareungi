@@ -86,13 +86,17 @@ with st.container(border=True):
     if tr is not None and tr.dropna(subset=["actual"]).week.nunique() >= 2:
         t = tr.dropna(subset=["actual"])
         t = t[t.week.isin(sorted(t.week.unique())[-8:])]
-        acc = pd.DataFrame([{"유형": q, "평균 차이(%)": (abs(x.pred - x.actual) / x.actual).mean() * 100, "평균 차이(건)": abs(x.pred - x.actual).mean()}
-                            for q in KINDS for x in [t[t.part == q]] if len(x)])
+        # 예측 구간 적중: 테스트 구간 뒤(2026-07-06 주 ~)의 완결 주 가운데 실제가 구간 안에 든 주. 구간은 10주 중 8주를 겨냥해 만든 것이다
+        live = tr[(pd.to_datetime(tr.week) >= "2026-07-06") & tr.in80.notna()] if "in80" in tr else tr.iloc[0:0]
+        hit = {q: f"{int(g.in80.sum())}/{len(g)}주" for q, g in live.groupby("part")}
+        acc = pd.DataFrame([{"유형": q, "평균 차이(%)": (abs(x.pred - x.actual) / x.actual).mean() * 100, "평균 차이(건)": abs(x.pred - x.actual).mean(),
+                             "구간 적중": hit.get(q, "—")} for q in KINDS for x in [t[t.part == q]] if len(x)])
         a, b = st.columns([1.1, 1.4])
         with a:
             st.dataframe(acc, hide_index=True, width="stretch", column_config={
                 "평균 차이(%)": st.column_config.NumberColumn(format="%.0f%%", help="주마다 |예측 − 실제| ÷ 실제를 8주 평균한 값"),
-                "평균 차이(건)": st.column_config.NumberColumn(format="%,.0f건", help="주마다 |예측 − 실제|를 8주 평균한 값")})
+                "평균 차이(건)": st.column_config.NumberColumn(format="%,.0f건", help="주마다 |예측 − 실제|를 8주 평균한 값"),
+                "구간 적중": st.column_config.TextColumn(help="2026년 7월 이후의 주 가운데 실제 신고 건수가 예측 구간 안에 든 주의 수입니다. 구간은 10주 중 8주가 들도록 만든 것입니다.")})
         with b:
             e = t[t.part == "전체"].sort_values("week")
             x = [f"{pd.Timestamp(w).month}/{pd.Timestamp(w).day}" for w in e.week]

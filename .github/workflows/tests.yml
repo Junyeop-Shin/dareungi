@@ -1,5 +1,5 @@
 # 푸시·PR마다 운영 파이프라인 회귀 시험과 문법 검사를 돌린다(2026-10-10).
-# - tests/test_ops.py: 메모리 DuckDB와 임시 파일만 쓰므로 데이터·인증키 없이 돈다
+# - tests/test_ops.py, tests/test_analysis.py: 메모리 DuckDB와 임시 파일만 쓰므로 데이터·인증키 없이 돈다
 # - pyflakes: app·py·tests의 안 쓰는 import, 없는 이름 같은 실수를 잡는다
 # 화면 시험(tests/smoke_app.py)은 serving/*.parquet(깃에 없음)이 있어야 해서 여기서는 돌리지 않는다. 손으로: .venv/bin/python tests/smoke_app.py
 # 패키지는 시험이 실제로 불러오는 것만 requirements.txt와 같은 버전으로 설치한다(전체 설치는 torch 등으로 몇 분이 걸린다)
@@ -24,3 +24,5 @@ jobs:
         run: python -m pyflakes app py tests | grep -v "fc_dl.py" | tee flakes.txt; test ! -s flakes.txt      # fc_dl.py의 lightgbm import 순서 경고는 의도된 것(CLAUDE.md 6절)
       - name: 운영 회귀 시험
         run: python tests/test_ops.py
+      - name: 분석 정의 시험
+        run: python tests/test_analysis.py

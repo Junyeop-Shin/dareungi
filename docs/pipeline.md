@@ -110,3 +110,23 @@
 공통 원칙: 다시 맞춘 모형은 파일 이름·설정의 version을 올리고 결정 로그에 남긴다. 결과가 나빠도 기준을 바꿔 좋게 보이게 하지 않는다.
 
 위험 모형의 이력과 채점(2026-10-10): `py/jobs/risk_track.py`. weekly가 점수를 낸 뒤 `risk_history`(주 × 자전거)에 쌓고, 다음 주가 다 지난 주를 `risk_eval`에 채점한다(주마다 한 줄, weekly 로그에 한 줄 출력). 둘 다 운영 DB에만 있고 화면에는 아직 내보내지 않는다. 이력은 2026-09-28 주 점수부터라 첫 채점은 2026-10-12 실행에서 나온다. 담당자가 추천 자전거를 미리 손보면 신고가 줄어 적중률이 낮게 나온다는 점을 같이 읽는다.
+
+## Streamlit 버전을 올릴 때 (2026-10-10)
+
+화면 모양의 상당 부분이 Streamlit이 공식으로 보장하지 않는 내부 이름표(data-testid)와 동작에 기대고 있다. 지금 버전은 `requirements.txt`에 1.65.0으로 고정돼 있다. 올릴 때는 아래를 확인한다.
+
+| 기대는 것 | 어디에 쓰나(`app/common/theme.py`의 CSS, 따로 적은 것 제외) | 사라지면 |
+|---|---|---|
+| `stHeader`, `stToolbar`, `stTopNavLink` | 위쪽 메뉴를 글자 탭으로, 왼쪽 끝을 본문과 맞춤 | 메뉴가 기본 알약 모양으로 돌아감 |
+| `stLayoutWrapper`, `stVerticalBlock`, `stHorizontalBlock`, `stColumn` | 좁은 화면에서 칸을 아래로 쌓고 높이를 고정한 카드를 내용만큼 늘리기(카드의 모서리·테두리는 CSS가 아니라 `.streamlit/config.toml`의 baseRadius와 Streamlit 기본값) | 태블릿·휴대폰 폭에서 카드가 잘림 |
+| `.stApp`의 `color-scheme` | 보조 글자·링크 색을 `light-dark()`로 테마별 지정 | 한쪽 테마에서 글자 대비가 무너짐 |
+| `stCaptionContainer`, `stAlertContainer`, `stMarkdownContainer blockquote`, `stExpander summary` | 회색 글자·인용 상자·접는 상자의 글자색과 바탕 | 대비 부족, 접는 상자 머리줄 색 |
+| `stElementToolbar`, `InputInstructions` | 표 위의 영어 도구와 입력칸 안의 영어 안내를 숨김 | 영어 문구가 다시 보임 |
+| `stPopover button`, `button[kind^="primary"]`, `stDownloadButton button` | 구 선택 버튼 높이, 어두운 테마의 조회 버튼 글자색, 내려받기 버튼을 링크 모양으로 | 버튼 크기·대비·모양 |
+| `stHtml`을 감싼 `stElementContainer`, `st.html(unsafe_allow_javascript=True)` | 문서 언어 ko, 브라우저 탭 이름(스크립트만 넣은 칸은 숨김) | 탭 이름·언어가 기본값, 화면 위에 빈 줄 |
+| `.st-key-…`(container의 key) | 예측 방법 상자, 자전거 조회 입력 상자의 글자 크기·누르는 곳 크기 | 그 상자의 글자·크기 |
+| `st.container(horizontal=…, height="stretch")`, `LinkColumn(display_text=…)`, 표·지도의 `on_select` | 지역 선택 배치, 조회 화면 카드 높이 맞춤, 표의 자전거번호 링크, 대여소 선택 | 해당 기능이 오류 또는 다른 모양 |
+| plotly의 `.xtick text`, `.legendtext` | 그래프 축·범례 글자색 | 밝은 테마에서 축 글자 대비 부족 |
+
+확인 순서: ① `tests/smoke_app.py`(예외 0) → ② 서버를 띄우고 `tests/screens.py`(캡처와 함께 위 이름표가 화면에 있는지 확인해, 사라진 것이 있으면 목록을 찍고 실패로 끝난다) → ③ `output/screens/`의 캡처를 눈으로 비교.
+

@@ -122,19 +122,11 @@ def status_cells():
 
 
 def header(title, show_confidence=False, show_filter=True):
-    """화면 맨 위: 제목과 지역 선택을 한 줄에, 그 아래 '자료 기준' 띠(자료별 기준 시각, 밀린 자료는 주황, 오른쪽 끝에 예측 정확도)."""
+    """화면 맨 위: 제목 줄(왼쪽 제목, 오른쪽에 지역 선택 또는 예측 정확도), 그 아래 '자료 기준' 띠(자료별 기준 시각, 밀린 자료는 주황)."""
     theme.apply()
     tab = title if title == APP_NAME else f"{title} · {APP_NAME}"
     st.html(f"<script>document.title = '{tab}'</script>", unsafe_allow_javascript=True)          # 브라우저 탭 이름을 화면마다 다르게
-    left, right = st.columns([1.1, 1], vertical_alignment="center")
-    with left:
-        st.markdown(f'<div class="page-title" role="heading" aria-level="1">{title}</div>', unsafe_allow_html=True)
-    with right:
-        if show_filter:
-            gu_filter()
-    cells = "".join(f'<div class="fc{" late" if bad else ""}"><span class="dot"></span><span class="fl">{k}</span><span class="fv">{v}</span></div>'
-                    for k, v, bad in status_cells()) or '<div class="fc late"><span class="fv">데이터를 불러오지 못했습니다</span></div>'
-    conf = ""
+    conf = ""          # 예측 정확도(유형별 화면): 제목 줄 오른쪽, 다른 화면에서 지역 선택이 놓이는 자리에 둔다
     c = confidence() if show_confidence else None
     if c:
         gc = theme.P().get(CONF_COLOR.get(c["grade"], ""), "inherit")
@@ -149,8 +141,18 @@ def header(title, show_confidence=False, show_filter=True):
                f'<div>오차는 예측한 건수가 실제 신고 건수와 얼마나 달랐는지입니다. 작을수록 정확합니다.</div>'
                f'<div class="qt-rule">{rule}</div>')
         plain = f'최근 {c["weeks"]}주 평균 오차: 이 예측 {c["mae8"]:.0f}%, 기준값 {naive:.0f}%, 정확도 {c["grade"]}'
-        conf = f'<div class="fc end"><span class="fl">예측 정확도</span><span class="fv" style="color:{gc}">{c["grade"]}</span>{qhelp(tip, plain, "to-left")}</div>'
-    st.markdown(f'<div class="fresh" role="group" aria-label="자료 기준 시각">{cells}{conf}</div>', unsafe_allow_html=True)
+        conf = f'<div class="conf-top"><span class="fl">예측 정확도</span><span class="fv" style="color:{gc}">{c["grade"]}</span>{qhelp(tip, plain, "to-left")}</div>'
+    left, right = st.columns([1.1, 1], vertical_alignment="center")
+    with left:
+        st.markdown(f'<div class="page-title" role="heading" aria-level="1">{title}</div>', unsafe_allow_html=True)
+    with right:
+        if show_filter:
+            gu_filter()
+        elif conf:
+            st.markdown(conf, unsafe_allow_html=True)
+    cells = "".join(f'<div class="fc{" late" if bad else ""}"><span class="dot"></span><span class="fl">{k}</span><span class="fv">{v}</span></div>'
+                    for k, v, bad in status_cells()) or '<div class="fc late"><span class="fv">데이터를 불러오지 못했습니다</span></div>'
+    st.markdown(f'<div class="fresh" role="group" aria-label="자료 기준 시각">{cells}</div>', unsafe_allow_html=True)
     return data.get_gu()
 
 

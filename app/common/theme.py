@@ -15,7 +15,7 @@ import plotly.io as pio
 import streamlit as st
 
 COLORS = dict(
-    card="rgba(127,127,127,0.06)", border="rgba(127,127,127,0.28)", muted="light-dark(#5F6368, #9AA0A6)", grid="rgba(127,127,127,0.18)", axis="#8B8F94",
+    border="rgba(127,127,127,0.28)", muted="light-dark(#5F6368, #9AA0A6)", grid="rgba(127,127,127,0.18)", axis="#8B8F94",
     text="#8B8F94",                                  # 그래프 안 숫자(막대 끝 등): 양쪽 배경에서 읽히는 회색
     primary="#2FA77E", primary_dark="#1D7A5C", primary_mid="#5DCAA5", primary_light="#DDF3EA", secondary="#8B8F94", naive="#A3A3A0",
     link="light-dark(#12604A, #3CC08A)", ok="light-dark(#1D7A5C, #3CC08A)", danger="light-dark(#B4372D, #F0877E)", whisker="#8B8F94",
@@ -48,7 +48,6 @@ def css(p):
     return f"""
 <style>
 .block-container {{ padding-top: 5.4rem; max-width: 1320px; }}
-div[data-testid="stVerticalBlockBorderWrapper"] {{ background: {p['card']}; border-color: {p['border']} !important; border-radius: 10px !important; }}
 .page-title {{ font-size: 1.9rem; font-weight: 800; margin: 0; letter-spacing: -0.01em; }}
 /* 위쪽 메뉴: 알약 모양 버튼 대신 글자 탭. 지금 화면은 굵은 글자와 아래 줄로 표시하고, 왼쪽 끝을 본문과 맞춘다 */
 header[data-testid="stHeader"] {{ background: light-dark(#F5F6F5, #141414); border-bottom: 1px solid {p['border']}; }}
@@ -66,7 +65,10 @@ a[data-testid="stTopNavLink"]:focus-visible {{ outline: 2px solid {p['link']}; o
           border-top: 1px solid {p['border']}; border-bottom: 1px solid {p['border']}; font-size: 0.88rem; line-height: 1.4; }}
 .fresh .fc {{ display: flex; align-items: center; gap: 8px; padding: 0 20px; border-left: 1px solid {p['border']}; }}
 .fresh .fc:first-child {{ padding-left: 2px; border-left: none; }}
-.fresh .fc.end {{ margin-left: auto; padding-right: 2px; border-left: none; }}
+/* 제목 줄 오른쪽의 예측 정확도(유형별 화면). 지역 선택 버튼과 같은 자리·같은 높이 */
+.conf-top {{ display: flex; justify-content: flex-end; align-items: center; gap: 8px; min-height: 2rem; font-size: 0.95rem; }}
+.conf-top .fl {{ color: {p['muted']}; }}
+.conf-top .fv {{ font-weight: 700; }}
 .fresh .fl {{ color: {p['muted']}; }}
 .fresh .fv {{ font-weight: 600; }}
 .fresh .dot {{ flex: none; width: 8px; height: 8px; border-radius: 50%; background: light-dark(#1D7A5C, #3CC08A); }}
@@ -132,6 +134,10 @@ a.bike-link:hover {{ color: {p['link']} !important; text-decoration-color: curre
 .gu-picked {{ color: {p['muted']}; font-size: 0.85rem; text-align: right; margin-top: 2px; }}
 /* 강조색 버튼(조회)의 글자: 어두운 테마에서는 밝은 초록 바탕이라 글자를 어둡게 */
 button[kind^="primary"] p {{ color: light-dark(#FFFFFF, #0B1F17) !important; }}
+/* 내려받기 버튼: 카드의 '자세히 보기' 링크와 같은 글자 모양 */
+div[data-testid="stDownloadButton"] button {{ min-height: 0; padding: 0; }}
+div[data-testid="stDownloadButton"] button p {{ color: {p['link']}; font-size: 0.92rem; font-weight: 600; }}
+div[data-testid="stDownloadButton"] button:hover p {{ text-decoration: underline; }}
 /* 구 선택 버튼: 옆의 권역 버튼과 같은 높이로 */
 div[data-testid="stPopover"] button {{ min-height: 2rem; padding: 0 12px; font-size: 0.875rem; }}
 /* 작은 범례(타일맵의 색 단계, 지도의 원 크기) */
@@ -186,11 +192,11 @@ div[data-testid="stElementToolbar"] {{ display: none; }}
 /* 좁은 화면(태블릿, 200% 확대): 옆으로 나란한 칸을 아래로 쌓고, 고정 높이 카드는 내용만큼 늘린다 */
 @media (max-width: 1000px) {{
   div[data-testid="stHorizontalBlock"] {{ flex-wrap: wrap; }}
-  .fresh .fc, .fresh .fc.end {{ flex: 1 1 100%; margin-left: 0; padding: 0 2px; border-left: none; }}          /* 자료 기준 띠는 한 줄에 한 칸씩 */
+  .fresh .fc {{ flex: 1 1 100%; padding: 0 2px; border-left: none; }}          /* 자료 기준 띠는 한 줄에 한 칸씩 */
   .kstrip {{ grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 16px; }}
   .kstrip .kc, .kstrip.narrow .kc {{ padding: 2px 12px 2px 2px; border-left: none; }}
   div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {{ min-width: min(100%, 300px); }}
-  div[data-testid="stVerticalBlockBorderWrapper"], div[data-testid="stVerticalBlockBorderWrapper"] > div {{ height: auto !important; max-height: none !important; }}
+  div[data-testid="stLayoutWrapper"], div[data-testid="stVerticalBlock"] {{ height: auto !important; max-height: none !important; }}          /* 높이를 고정한 카드도 내용만큼 */
 }}
 </style>"""
 

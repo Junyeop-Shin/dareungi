@@ -8,10 +8,11 @@
 지도는 그 목록의 자전거가 최근 반납된 대여소를 원으로, 자치구 경계선과 한글 구 이름을 함께 그린다.
 원을 누르거나 옆 표에서 대여소를 고르면 지도가 그 대여소로 확대되어 그 대여소만 남고, 아래에 그 대여소의 자전거 목록이 나온다
 (표로도 고를 수 있어야 키보드만으로 쓸 수 있다).
-설명은 한 줄로 두고 근거는 제목 옆 물음표에 넣는다. 표에는 현장에서 바로 쓰는 열만 보인다(CSV 내려받기는 뺐다. 사람 결정 2026-10-09).
+설명은 한 줄로 두고 근거는 제목 옆 물음표에 넣는다. 표에는 현장에서 바로 쓰는 열만 보이고, 표 아래 버튼으로 CSV를 내려받는다(2026-10-09에 뺐다가 2026-10-10에 되살림).
 이 화면의 순위는 주간 예측과 다른 모형이라 예측 정확도는 보여 주지 않는다.
 """
 import sys
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -29,6 +30,16 @@ s = data.status()
 basis = f"{s['대여이력']:%-m/%-d %-H시}" if "대여이력" in s else "최근"
 area_label = ui.scope_label()
 in_area = data.apply_gu          # 구를 고르지 않으면 거르지 않는다(자치구가 비어 있는 자전거도 서울 전체에는 들어간다)
+
+
+def download(df, names, file_stub, key):
+    """표를 CSV로 내려받는 버튼. 현장에 목록을 들고 나가거나 엑셀로 옮길 때 쓴다(2026-10-09에 뺐다가 2026-10-10에 되살림).
+    df에는 bike_id가 있어야 한다. names: {열 이름: 파일에 적을 이름}(이 순서대로, 맨 앞에 자전거번호를 붙인다). 엑셀에서 한글이 깨지지 않게 utf-8-sig로 쓴다"""
+    out = df.assign(자전거번호=df.bike_id.map(lambda x: f"SPB-{int(x):05d}"))[["자전거번호"] + list(names)].rename(columns=names)
+    # 모양은 카드의 '자세히 보기' 링크와 같게(초록 글자, 테두리 없음), 자리는 표의 오른쪽 아래. 큰 기본 버튼은 화면에서 혼자 튀었다
+    with st.container(horizontal=True, horizontal_alignment="right"):
+        st.download_button(f"CSV 내려받기 · {len(out):,}대", out.to_csv(index=False).encode("utf-8-sig"), file_name=f"{file_stub}_{area_label}_{date.today():%Y%m%d}.csv",
+                           mime="text/csv", key=key, type="tertiary")
 short2 = lambda t: " · ".join(texts.short_reason(x) for x in (t or "").split(" / ")[:2])      # 선정 사유는 홈 목록처럼 짧은 말 두 개만
 
 
@@ -140,6 +151,7 @@ with st.container(border=True):
                                         "대여소": "반납 대여소", "district": "자치구",
                                         "n_sham_7d": st.column_config.NumberColumn("7일간 직후 반납 횟수", format="%d회"),
                                         "신고": st.column_config.TextColumn("고장 신고 여부", help="경보가 뜬 뒤 이 자전거에 고장 신고가 접수됐는지")})
+            download(v, {"alert_ts": "최근 반납 시각", "대여소": "반납 대여소", "district": "자치구", "n_sham_7d": "7일간 직후 반납 횟수", "신고": "고장 신고 여부"}, "대여직후반납", "dl_sham")
             station_map(v, "sham", "대여 직후 반납 반복 자전거 위치", f"{len(v):,}대")
         else:
             ui.empty(f"{area_label}에는 최근 48시간 동안 없습니다.")
@@ -178,6 +190,8 @@ with st.container(border=True):
                 "rentals_after": st.column_config.NumberColumn("신고 후 대여 횟수", format="%d회"),
                 "대여소": "최근 반납 대여소", "district": "자치구",
                 "last_rtn_dt": st.column_config.DatetimeColumn("최근 반납 시각", format="M/D HH:mm")})
+            download(v, {"last_report_ts": "최근 신고 시각", "kinds": "신고 부품", "조치": "신고 후 상태(추정)", "rentals_after": "신고 후 대여 횟수",
+                         "대여소": "최근 반납 대여소", "district": "자치구", "last_rtn_dt": "최근 반납 시각"}, f"최근신고_{status}", "dl_rep")
             station_map(v, "rep", "최근 신고 자전거 위치", f"{status} {len(v):,}대")
         else:
             ui.empty(f"{area_label}에는 최근 {texts.REPORT_DAYS}일 동안 고장 신고된 자전거가 없습니다.")
@@ -207,5 +221,7 @@ with st.container(border=True):
             "주행": st.column_config.NumberColumn("주간 주행거리", format="%d km", width="small", help="최근 4주 평균"),
             "사유": st.column_config.TextColumn("선정 사유", width="large"),
             "대여소": "최근 반납 대여소", "district": "자치구"})
+        download(v, {"등급": "등급", "risk_ratio": "신고 가능성(평균 대비 배)", "부품": "의심 고장 부품", "주행": "주간 주행거리(km)", "사유": "선정 사유",
+                     "대여소": "최근 반납 대여소", "district": "자치구", "last_rtn_dt": "최근 반납 시각"}, "점검권장", "dl_risk")
         station_map(insp, "risk", "점검 권장 자전거 위치", f"점검 권장 {len(insp):,}대 전체")
 ui.footer()

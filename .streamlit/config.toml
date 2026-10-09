@@ -6,6 +6,7 @@ baseRadius = "0.5rem"
 [theme.light]
 # 강조색은 그래프와 같은 초록 계열 하나로(사람 결정 2026-10-10). 고른 버튼·링크의 글자색으로도 쓰이므로 밝은 바탕에서 대비 4.5:1이 넘는 진한 초록
 primaryColor = "#12604A"
+linkColor = "#12604A"          # 표의 자전거번호 링크도 같은 초록(기본값은 파랑)
 dataframeHeaderBackgroundColor = "#ECEEEC"
 backgroundColor = "#F5F6F5"
 secondaryBackgroundColor = "#FFFFFF"
@@ -13,6 +14,7 @@ textColor = "#1F2328"
 
 [theme.dark]
 primaryColor = "#3CC08A"
+linkColor = "#3CC08A"
 dataframeHeaderBackgroundColor = "#242424"
 backgroundColor = "#141414"
 secondaryBackgroundColor = "#1E1E1E"

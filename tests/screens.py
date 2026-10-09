@@ -17,6 +17,30 @@ PAGES = [("admin_home", "http://localhost:8501/", 1400), ("admin_parts", "http:/
          ("admin_lookup", "http://localhost:8501/lookup", 1400)]
 
 
+# 화면 모양(app/common/theme.py의 CSS)이 기대는 Streamlit 내부 이름표. Streamlit 버전을 올렸을 때 하나라도 사라지면 그 부분의 모양이 조용히 풀린다.
+# 무엇이 무엇에 쓰이는지는 docs/pipeline.md의 'Streamlit 버전을 올릴 때'
+HOOKS = {
+    "/": ['header[data-testid="stHeader"]', 'div[data-testid="stToolbar"]', 'a[data-testid="stTopNavLink"]', 'div[data-testid="stLayoutWrapper"] > div[data-testid="stVerticalBlock"]',
+          'div[data-testid="stHorizontalBlock"]', 'div[data-testid="stColumn"]', 'div[data-testid="stPopover"] button', 'div[data-testid="stExpander"] summary',
+          'div[data-testid="stElementContainer"]:has(> div[data-testid="stHtml"])', ".js-plotly-plot .legendtext", ".stApp"],
+    "/parts_forecast": [".st-key-method_box", 'div[data-testid="stMarkdownContainer"] blockquote', 'div[data-testid="stCaptionContainer"]'],
+    "/lookup": [".st-key-lookup_box input", 'button[kind^="primary"] p'],
+    "/inspection": ['div[data-testid="stDownloadButton"] button p'],
+}
+
+
+def check_hooks(b):
+    """HOOKS의 이름표가 화면에 있는지 본다. 없는 것을 돌려준다"""
+    missing = []
+    for path, sels in HOOKS.items():
+        pg = b.new_page(viewport={"width": 1400, "height": 1200})
+        pg.goto("http://localhost:8501" + path, wait_until="domcontentloaded"); pg.wait_for_timeout(8000)
+        missing += [f"{path}  {sel}" for sel in sels if pg.locator(sel).count() == 0]
+        if path == "/" and pg.evaluate("getComputedStyle(document.querySelector('.stApp')).colorScheme") not in ("light", "dark"):
+            missing.append("/  .stApp의 color-scheme(테마별 글자색 light-dark()가 여기에 기댄다)")
+        pg.close()
+    return missing
+
 def grow(pg):
     """창 높이를 내용 높이로 키운다(최대 9,000px). 키운 뒤 그래프가 다시 그려질 시간을 조금 준다."""
     h = pg.evaluate("Math.max(...[...document.querySelectorAll('[data-testid=stMain],body')].map(e => e.scrollHeight))")
@@ -37,5 +61,8 @@ if __name__ == "__main__":
         pg.goto("http://localhost:8501/lookup", wait_until="domcontentloaded"); pg.wait_for_timeout(6000)
         pg.get_by_placeholder("예: 74216").fill("74216"); pg.get_by_role("button", name="조회").click(); pg.wait_for_timeout(4000); grow(pg)
         pg.screenshot(path=str(OUT / "admin_lookup_result.png"))
+        missing = check_hooks(b)
         b.close()
     print("저장:", OUT)
+    print("Streamlit 이름표: 모두 있음" if not missing else "Streamlit 이름표가 사라짐(모양이 풀렸을 수 있다):\n  " + "\n  ".join(missing))
+    raise SystemExit(1 if missing else 0)

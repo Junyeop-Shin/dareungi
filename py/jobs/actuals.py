@@ -135,6 +135,11 @@ def forecast_track(con, daily, weeks=60):
     t = pd.DataFrame(rows)
     t["method"] = t.pred_kma.notna().map({True: "kma", False: "cal"})
     t["pred"] = t.pred_kma.fillna(t.pred_cal)
+    # 그 주에 보여 준 예측 구간(화면의 lo80 ~ hi80와 같은 계산)과 실제가 그 안에 들었는지. '10주 중 8주'라는 말이 지금도 맞는지 매주 쌓아 본다
+    iv = [spec["intervals_80"][m].get(p, (None, None)) for m, p in zip(t.method, t.part)]
+    t["lo80"] = [max(pr * (1 + lo), 0) if lo is not None else None for pr, (lo, _) in zip(t.pred, iv)]
+    t["hi80"] = [pr * (1 + hi) if hi is not None else None for pr, (_, hi) in zip(t.pred, iv)]
+    t["in80"] = ((t.actual >= t.lo80) & (t.actual <= t.hi80)).where(t.actual.notna() & t.lo80.notna())
     return t
 
 
