@@ -19,7 +19,7 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))   # py/ 공용 모듈
-from seoul_api import seoul_get   # noqa: E402
+from seoul_api import OK_CODES, seoul_get   # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "data/raw/failure_api/failure_gap_days.csv"
@@ -34,7 +34,10 @@ def fetch_day(day):
     d_end = d0 + pd.Timedelta(days=2)                 # 다음 날 끝까지
     rows, start = [], 1
     while True:
-        page = seoul_get("tbCycleFailureReport", start, start + 999, d0.strftime("%Y%m%d"))["rows"]
+        r = seoul_get("tbCycleFailureReport", start, start + 999, d0.strftime("%Y%m%d"))
+        if r["code"] not in OK_CODES:                    # 오류 페이지를 '더 없음'으로 읽지 않는다
+            raise RuntimeError(f"tbCycleFailureReport {day} {start}행부터: {r['code']} {r['msg']}")
+        page = r["rows"]
         if not page:
             break
         rows += page

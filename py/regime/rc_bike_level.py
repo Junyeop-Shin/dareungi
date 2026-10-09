@@ -65,10 +65,9 @@ def r4b(con):
     """헛대여 뒤 같은 날·다음 날 신고 비율(월별)"""
     return con.sql("""
     SELECT strftime(t.d, '%Y-%m') AS ym, count(*) AS n_sham,
-           avg(CASE WHEN r.bike_id IS NOT NULL THEN 1.0 ELSE 0.0 END) AS p_rep
+           avg(CASE WHEN EXISTS (SELECT 1 FROM rep r WHERE r.bike_id = t.bike_id AND r.rd BETWEEN t.d AND t.d + INTERVAL 1 DAY)
+                    THEN 1.0 ELSE 0.0 END) AS p_rep          -- 같은 날·다음 날 둘 다 신고돼도 헛대여 한 건은 한 번만 센다
     FROM (SELECT * FROM trips WHERE sham) t
-    LEFT JOIN (SELECT DISTINCT bike_id, rd FROM rep) r
-      ON r.bike_id = t.bike_id AND r.rd BETWEEN t.d AND t.d + INTERVAL 1 DAY
     GROUP BY 1 ORDER BY 1
     """).df()
 

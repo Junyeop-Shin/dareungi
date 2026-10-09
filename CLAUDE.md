@@ -126,14 +126,15 @@ from prep import to_utf8, std_name, read_any, data_files, make_utf8_folder
 | `forecast/` | 1C·운영 예측: 기상청 과거 예보 정리(`kma_forecast`, JMA는 참고 `weather_forecast`), 부록 B 사후 분석(`fc_posthoc`), 보고서 그림(`report_figs`), 운영 대여량 모형 고정·재현(`fc_ops_fit`), 테스트 뒤 주 비교(`fc_ops_compare`), 강건성 점검(`robustness`, `docs/notes/07`) |
 | `risk/` | 2B: 평가·베이스라인(`risk_eval`), LightGBM 포아송 + km offset(`risk_lgb`), 해석 모형, 헛대여 경보 검증, 순위 안정성(`risk_stability`), 설정 고정·테스트(`risk_freeze --test`는 **사람 승인 뒤 한 번만**) |
 | `regime/` | 04b 레짐 원인 사후 분석(`rc_*`). 결과는 `docs/notes/04` |
-| `jobs/` | 3A 운영 파이프라인: 수집(대여이력·고장신고·날씨·대여소), 경보, 매일(`daily`, 실적은 `actuals`)·매주(`weekly`) 갱신, 스냅샷 발행(`serving/`). 운영 DB `data/db/ops.duckdb` |
+| `jobs/` | 3A 운영 파이프라인: 수집(대여이력·고장신고·날씨·대여소), 경보, 매시(`hourly`: 최근 신고 목록·자전거 위치)·매일(`daily`, 실적은 `actuals`)·매주(`weekly`) 갱신, 스냅샷 발행(`serving/`). 운영 DB `data/db/ops.duckdb` |
 
 **앱·배포·노트북·데이터**
 
 | 경로 | 내용 |
 |---|---|
-| `app/admin/`, `app/citizen/`, `app/common/` | 3B 대시보드: 관리자 앱(한눈에 보기·부품별 고장 예측·점검 대상) 8501, 시민 조회 8502. `serving/*.parquet`만 읽는다. 테마는 `.streamlit/config.toml` |
+| `app/admin/`, `app/citizen/`, `app/common/` | 3B 대시보드: 관리자 앱(한눈에 보기·부품별 고장 신고 예상·점검 대상) 8501, 시민 조회 8502. `serving/*.parquet`만 읽는다. 테마는 `.streamlit/config.toml` |
 | `deploy/` | 서버 1대 배포(설치 스크립트, systemd 타이머, Caddy) |
+| `tests/` | `test_ops.py` 운영 파이프라인 회귀 시험(빈 응답·트랜잭션, 잠금, 재수집 시간대, 예보 문자열, 신고율 7일 컷), `smoke_app.py` 화면 예외 시험, `screens.py` 화면 캡처(→ `output/screens/`) |
 | `notebooks/` | `00_사전검증`, `1A_Build_master`, `1A_regime`, `1A_eda`, `1B_regression`, `1C_forecast`, `1C_test` |
 | `data/raw/external/` | `events.csv`(외부 사건 날짜·출처), `fleet.csv`(공식 운영 대수, 참고용) |
 | `data/processed/` | `daily_master_v2`(3,834일 × 75열, 깃에 있음), `fail_std`, `rent/`·`rent_2021/`(대여이력 상세), `panel/bike_week.parquet` |

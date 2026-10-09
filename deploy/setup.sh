@@ -42,6 +42,7 @@ done
 declare -A JOBS=(
   [collect_rent]="*-*-* *:15:00|py/jobs/collect_rent.py"
   [detect_sham]="*-*-* *:20:00|py/jobs/detect_sham.py"
+  [hourly]="*-*-* *:25:00|py/jobs/hourly.py"
   [collect_wx_fcst]="*-*-* 05,17:20:00|py/jobs/collect_wx.py fcst"
   [collect_fail]="*-*-* 06:10:00|py/jobs/collect_fail.py"
   [collect_wx_obs]="*-*-* 06:30:00|py/jobs/collect_wx.py obs"

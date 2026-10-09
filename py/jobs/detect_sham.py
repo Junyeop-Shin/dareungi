@@ -16,7 +16,7 @@ from common import alert, connect, job_lock, log_run, table_exists   # noqa: E40
 SQL = """
 CREATE OR REPLACE TABLE alerts_live AS
 WITH t AS (
-  SELECT bike_id, rent_dt, rtn_st, (rent_st = rtn_st AND use_min BETWEEN 2 AND 3) AS sham
+  SELECT DISTINCT bike_id, rent_dt, rtn_st, (rent_st = rtn_st AND use_min BETWEEN 2 AND 3) AS sham   -- API가 같은 대여를 두 번 줄 때가 있다
   FROM trips_live WHERE rent_dt >= now() - INTERVAL 7 DAY AND bike_id IS NOT NULL),
 s AS (SELECT *, lag(sham) OVER w AS prev_sham FROM t WINDOW w AS (PARTITION BY bike_id ORDER BY rent_dt)),
 a AS (SELECT bike_id, rent_dt AS alert_ts, rtn_st AS last_st,

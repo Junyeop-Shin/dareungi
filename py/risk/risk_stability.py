@@ -101,7 +101,8 @@ def main():
     use.round(3).to_csv(ROOT / "output/tables/rb_10_risk_group_usage.csv")
 
     # 4. 속도
-    v = va[va.speed_med.notna() & (va.n_trips > 0)].copy()
+    # 마지막 주는 다음 주(테스트 구간) 대여 수가 없어 신고만 세지고 분모가 빠진다. 5절처럼 뺀다
+    v = va[va.speed_med.notna() & (va.n_trips > 0) & (va.wk < va.wk.max())].copy()
     v["dec"] = pd.qcut(v.speed_med, 10, labels=False) + 1
     sv = smp[smp.speed_med.notna() & (smp.n_trips > 0)]
     sv_dec = pd.cut(sv.speed_med, pd.qcut(v.speed_med, 10, retbins=True)[1], labels=False, include_lowest=True) + 1

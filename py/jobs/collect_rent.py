@@ -2,7 +2,8 @@
 
 tbCycleRentData(시간대별 대여이력)로 직전에 끝난 시간대와 그사이 빠진 시간대를 모두 받아 raw_rent에 넣는다.
 rent_hours_done의 마지막 시간대 다음부터 따라잡고, 처음 돌릴 때는 최근 3일을 받는다.
-같은 시간대는 지우고 다시 넣으므로 몇 번을 돌려도 결과가 같다. 늦게 반영되는 건이 있어 3시간 전 시간대는 한 번 더 받는다.
+같은 시간대는 지우고 다시 넣으므로 몇 번을 돌려도 결과가 같다. 늦게 반영되는 건이 있어 3시간 전 시간대를 한 번 더 받고,
+대여는 반납한 뒤에야 API에 나오므로(긴 대여는 처음 받을 때 빠짐) 24시간 전 시간대도 한 번 더 받는다.
 원자료는 문자열 그대로 두고, 형 변환과 열 이름 통일(05 패널과 같은 이름)은 뷰 trips_live에서 한다.
 
 주의: 실시간 API에는 0 ~ 1분 대여가 그대로 들어온다(2026년 파일과 같다). 05 패널 규칙대로
@@ -37,7 +38,8 @@ def pending_hours(con, now, backfill_days=3):
     end = now.replace(minute=0, second=0, microsecond=0) - dt.timedelta(hours=1)
     start = last + dt.timedelta(hours=1) if last else end - dt.timedelta(days=backfill_days)
     hours = [start + dt.timedelta(hours=i) for i in range(int((end - start).total_seconds() // 3600) + 1)]
-    hours.append(end - dt.timedelta(hours=2))
+    hours.append(end - dt.timedelta(hours=2))      # 늦게 반영되는 건
+    hours.append(end - dt.timedelta(hours=23))     # 대여는 반납해야 API에 나온다. 몇 시간짜리 대여는 그 시간대를 처음 받을 때 빠져 있다
     return sorted(set(h for h in hours if h <= end))
 
 

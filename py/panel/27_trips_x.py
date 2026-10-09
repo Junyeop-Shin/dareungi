@@ -1,7 +1,7 @@
 """통행마다 통행 구분·지형·날씨를 붙이고 자전거별 이동 순서를 만든다(런북 05, 2A-7).
 
 만드는 테이블:
-  holidays   공휴일(data/raw/calendar/holidays_2016_2026.csv)
+  holidays   공휴일(data/raw/calendar/holidays_*.csv)
   trips_x    trips + 통행 구분(commute/leisure) + OD 지형(직선거리, 오르막, 내리막, 우회율)
              + 대여 시각의 날씨(기온, 강수, 직전 3시간 강수) + use_m_fixed
   trips_seq  trips_x + relocated(직전 반납과 다른 대여소에서 대여됨 = 이용자 없이 옮겨짐), idle_h(직전 반납 뒤 쉰 시간)
@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def main():
     con = connect()
-    hol = (ROOT / "data/raw/calendar/holidays_2016_2026.csv").as_posix()
+    hol = (ROOT / "data/raw/calendar/holidays_*.csv").as_posix()      # 연도별 파일 전부(2016 ~ 2026 + py/build/holidays.py로 받은 해)
     con.execute(f"CREATE OR REPLACE TABLE holidays AS SELECT DISTINCT CAST(date AS DATE) AS date FROM read_csv('{hol}', header = true)")
     detour = con.execute("""
     SELECT median(t.use_m / NULLIF(o.straight_m, 0)) FROM trips t JOIN od o USING (rent_st, rtn_st)

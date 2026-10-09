@@ -4,7 +4,8 @@
 baseRadius = "0.75rem"
 
 [theme.light]
-primaryColor = "#2F6FDE"
+# 고른 버튼·링크의 글자색으로도 쓰이므로 밝은 바탕에서 대비 4.5:1이 나오는 파랑(#2F6FDE는 3.9:1이었다)
+primaryColor = "#1F4FB5"
 backgroundColor = "#F5F6F5"
 secondaryBackgroundColor = "#FFFFFF"
 textColor = "#1F2328"
@@ -17,3 +18,7 @@ textColor = "#ECECEC"
 
 [server]
 headless = true
+
+# 오른쪽 위 'Deploy' 버튼과 개발자 메뉴를 숨긴다. ⋮ 메뉴(Settings → 테마 전환)는 남는다
+[client]
+toolbarMode = "viewer"

@@ -46,7 +46,7 @@ def baseline(con):
     SELECT year(t.rent_dt) AS y, count(*) AS n,
            avg(CASE WHEN f.reg_ts <= t.rent_dt + INTERVAL 7 DAY THEN 1.0 ELSE 0 END) AS base_7d,
            avg(CASE WHEN f.reg_ts <= t.rent_dt + INTERVAL 1 DAY THEN 1.0 ELSE 0 END) AS base_1d
-    FROM (SELECT bike_id, rent_dt FROM trips_seq USING SAMPLE 300000 ROWS) t
+    FROM (SELECT bike_id, rent_dt FROM trips_seq USING SAMPLE reservoir(300000 ROWS) REPEATABLE (42)) t   -- 시드를 고정해 다시 돌려도 기준선이 같다
     ASOF LEFT JOIN (SELECT bike_id, reg_ts FROM fail WHERE keep) f ON t.bike_id = f.bike_id AND t.rent_dt <= f.reg_ts
     GROUP BY 1 ORDER BY 1""").df()
 

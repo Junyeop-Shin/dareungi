@@ -9,12 +9,15 @@
   weekly_actual     주 × 자치구 대여·신고(actuals.py)           daily_reports    일 × 자치구 × 부품 신고(actuals.py)
   forecast_track    주별 예측·실제·나이브(actuals.py)           reported_recent  최근 7일 고장 신고된 자전거(daily.py)
   data_status       데이터별 최신 시각(화면의 '기준 시각')
+  forecast_accuracy 주간 예상의 과거 평균 오차(화면 '과거 기록으로 확인한 정확도' 표). DB가 아니라 output/tables의 결과 표에서 만든다
 
-실행: .venv/bin/python py/jobs/publish.py   # daily.py·weekly.py 끝에서도 부른다
+실행: .venv/bin/python py/jobs/publish.py   # daily.py·weekly.py 끝에서도 부른다. 자주 바뀌는 4개는 hourly.py가 매시 발행한다
 """
 import os
 import sys
 from pathlib import Path
+
+import pandas as pd
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from common import ROOT, connect, job_lock, log_run, table_exists   # noqa: E402
@@ -29,6 +32,31 @@ def publish(con, table, name=None):
     tmp, dst = SERVING / f"{name}.parquet.tmp", SERVING / f"{name}.parquet"
     con.execute(f"COPY (SELECT * FROM {table}) TO '{tmp.as_posix()}' (FORMAT PARQUET)")
     os.replace(tmp, dst)
+
+
+LIVE_FROM = "2026-07-06"     # fc_ops_compare.py의 FROM과 같다(테스트 구간 뒤 첫 월요일). 운영 비교 표의 시작 주
+
+
+def publish_accuracy():
+    """화면에 숫자를 손으로 옮겨 적지 않도록, 저장된 결과 표에서 '이 예상'과 '단순 짐작'의 평균 오차(전체 신고, %)를 읽어 내보낸다.
+
+    입력: output/tables/fc_ops_replay_valid.csv(2024 검증: S1_kma, B1 나이브. 2023년까지로 맞춘 모형. py/forecast/fc_ops_fit.py)
+          output/tables/fc_ops_compare_live.csv(2026-07-06 주부터 실제 결과가 나온 주: 예보판, 나이브. py/forecast/fc_ops_compare.py)
+    출력: serving/forecast_accuracy.parquet(period 기간 이름, pred 이 예상, naive 단순 짐작). 표가 없으면 그 줄은 뺀다."""
+    tab, rows = ROOT / "output/tables", []
+    if (tab / "fc_ops_replay_valid.csv").exists():
+        v = pd.read_csv(tab / "fc_ops_replay_valid.csv", index_col=0)["전체"]
+        rows.append({"period": "2024년 (2023년까지로 학습한 모형)", "pred": v["S1_kma"], "naive": v["B1 나이브"]})
+    if (tab / "fc_ops_compare_live.csv").exists():
+        c = pd.read_csv(tab / "fc_ops_compare_live.csv", index_col=0)
+        n = int(c["주 수"].iloc[0])
+        a = pd.Timestamp(LIVE_FROM); b = a + pd.Timedelta(days=7 * n - 1)
+        rows.append({"period": f"{a.year}년 {a.month}/{a.day} ~ {b.month}/{b.day} (최근 {n}주)", "pred": c.loc["예보판", "전체"], "naive": c.loc["나이브(지난주 그대로)", "전체"]})
+    if rows:
+        SERVING.mkdir(exist_ok=True)
+        tmp = SERVING / "forecast_accuracy.parquet.tmp"
+        pd.DataFrame(rows).to_parquet(tmp, index=False); os.replace(tmp, SERVING / "forecast_accuracy.parquet")
+    return len(rows)
 
 
 def build_status(con):
@@ -60,6 +88,8 @@ def run(names=None):
             for t in (names or SNAPSHOTS):
                 if table_exists(con, t):
                     publish(con, t); done.append(t)
+            if publish_accuracy():          # 작은 표라 발행할 때마다 다시 만든다(결과 표가 바뀌면 다음 발행에 반영)
+                done.append("forecast_accuracy")
             log_run(con, "publish", "ok", ",".join(done))
             print("publish:", done)
         finally:

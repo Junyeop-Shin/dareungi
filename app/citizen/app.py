@@ -16,7 +16,7 @@ import streamlit as st
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from common import data, texts, theme    # noqa: E402
 
-st.set_page_config(page_title="따릉이 자전거 조회", page_icon="🚲", layout="centered")
+st.set_page_config(page_title="따릉이 자전거 조회", layout="centered")
 p = theme.apply(top_pad="1.6rem")                    # 시민 앱은 위쪽 메뉴가 없다
 st.markdown(f"""<style>
 .c-title {{ font-size: 1.6rem; font-weight: 800; margin-bottom: 2px; }}
@@ -26,7 +26,13 @@ st.markdown(f"""<style>
 .c-row:last-child {{ border-bottom: none; }}
 .c-row span:first-child {{ color: {p['muted']}; white-space: nowrap; }}
 .c-row span:last-child {{ text-align: right; }}
+.c-do {{ margin: 10px 0 4px; padding-top: 10px; border-top: 1px solid {p['border']}; }}
+/* 휴대폰에서 누르는 곳(입력칸·조회 버튼)은 높이 44px 이상 */
+div[data-testid="stTextInput"] input, div[data-testid="stTextInput"] div[data-baseweb="input"] {{ min-height: 44px; }}
+div[data-testid="stFormSubmitButton"] button {{ min-height: 44px; }}
 </style>""", unsafe_allow_html=True)
+# 시민 화면의 등급 이름. '점검 권장'은 정비 담당자의 말이라, 타는 사람이 할 일로 바꿔 부른다(사람 결정 2026-10-09)
+GRADE_NAME = {"점검 권장": "확인하고 타세요", "주의": "한 번 살펴보세요", "보통": "보통", "낮음": "양호"}
 GRADE_TEXT = {
     "점검 권장": "비슷한 따릉이보다 고장 신고가 나올 가능성이 높은 편이에요.",
     "주의": "비슷한 따릉이보다 고장 신고 가능성이 조금 높은 편이에요.",
@@ -35,7 +41,7 @@ GRADE_TEXT = {
     "이용 적음": "최근 이용이 적어서 등급을 매기지 않았어요.",
 }
 
-st.markdown('<div class="c-title">🚲 자전거 상태 조회</div>', unsafe_allow_html=True)
+st.markdown('<div class="c-title" role="heading" aria-level="1">자전거 상태 조회</div>', unsafe_allow_html=True)
 st.markdown('<div class="c-sub">자전거에 적힌 번호(SPB-로 시작)를 넣으면 최근 이용과 고장 신고 기록을 볼 수 있어요.</div>',
             unsafe_allow_html=True)
 for name, days in data.stale_items(data.status()):
@@ -43,14 +49,14 @@ for name, days in data.stale_items(data.status()):
 
 with st.form("q", border=False):
     a, b = st.columns([3, 1], vertical_alignment="bottom")
-    q = a.text_input("자전거 번호", placeholder="예: 12345", max_chars=12, label_visibility="collapsed")
+    q = a.text_input("자전거 번호", placeholder="예: 74216 또는 SPB-74216", max_chars=12, label_visibility="collapsed")
     go_ = b.form_submit_button("조회", use_container_width=True, type="primary")
 
 num = lambda v: 0 if pd.isna(v) else v
 if q:
     m = re.search(r"\d+", q)
     if not m:
-        st.warning("번호의 숫자 부분을 넣어 주세요. 예: SPB-12345 → 12345")
+        st.warning("번호의 숫자 부분을 넣어 주세요. 예: SPB-74216 → 74216")
     else:
         bid = int(m.group())
         card = data.load("bike_card")
@@ -60,25 +66,28 @@ if q:
         r = risk[risk.bike_id == bid] if risk is not None else pd.DataFrame()
         reports = None if c.empty else c.iloc[0].reports_90d
         if c.empty or (num(c.iloc[0].trips_30d) == 0 and not isinstance(reports, str)):
-            st.info(f"SPB-{bid:05d}의 최근 90일 기록이 없어요. 번호를 다시 확인해 주세요.")
+            st.info(f"SPB-{bid:05d}의 최근 90일 기록이 없어요. 번호를 다시 확인해 주세요. 번호가 맞다면 최근 90일 동안 이용되지 않은 자전거예요.")
         else:
             c = c.iloc[0]
             with st.container(border=True):
                 st.markdown(f'<div class="mono" style="color:{p["muted"]}">SPB-{bid:05d}</div>', unsafe_allow_html=True)
                 if not r.empty:
                     g = texts.grade_name(r.grade.iloc[0])
-                    st.markdown(f'<div class="c-grade">{texts.GRADE_ICON.get(g, "")} {g}</div><div>{GRADE_TEXT.get(g, "")}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="c-grade" role="heading" aria-level="2">{GRADE_NAME.get(g, g)}</div><div>{GRADE_TEXT.get(g, "")}</div>', unsafe_allow_html=True)
                     reasons = r.reasons.iloc[0]
                     if isinstance(reasons, str) and reasons and g not in ("이용 적음", "낮음"):
                         st.markdown("<div class='card-caption' style='margin-top:8px'>이렇게 본 이유</div>" +
                                     "".join(f"<div>· {x}</div>" for x in reasons.split(" / ")), unsafe_allow_html=True)
+                # 등급과 상관없이 할 일을 등급 바로 아래에 적는다(등급만 보고 '그래서 타도 되나'가 남지 않게)
+                st.markdown('<div class="c-do">타기 전에 브레이크·타이어·안장을 한 번 확인해 보세요. '
+                            '이상하면 다른 자전거를 고르고 따릉이 앱에서 신고해 주세요.</div>', unsafe_allow_html=True)
                 age = f"약 {c.age_years:g}년" if not pd.isna(c.age_years) else "확인 어려움"
+                # 신고 기록 '10/01 타이어, 09/14 기타'는 한 줄에 하나씩, 날짜는 다른 화면처럼 '10/1'로
+                rep_html = re.sub(r"\b0(\d)", r"\1", reports).replace(", ", "<br>") if isinstance(reports, str) and reports else "없음"
                 rows = [("최근 30일 이용", f"{int(num(c.trips_30d))}회 · {num(c.km_30d):.0f}km"),
-                        ("마지막 고장 신고 뒤 달린 거리", f"{num(c.km_since_rep):.0f}km" if not pd.isna(c.km_since_rep) else "—"),
-                        ("최근 90일 고장 신고(날짜·부품)", reports if isinstance(reports, str) and reports else "없음"),
+                        ("최근 90일 고장 신고", rep_html),
                         ("운행 시작 후", age)]
                 st.markdown("".join(f'<div class="c-row"><span>{k}</span><span>{v}</span></div>' for k, v in rows), unsafe_allow_html=True)
-            st.success("타기 전에 브레이크와 타이어를 한 번 확인하고, 이상하면 따릉이 앱에서 신고해 주세요.", icon=":material/pedal_bike:")
             st.caption("등급은 이용자들이 남긴 고장 신고 기록으로 추정한 것이라, 신고되지 않은 고장은 반영되지 않아요.")
 
 s = data.status()

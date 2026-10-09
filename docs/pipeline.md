@@ -6,8 +6,9 @@
 
 | 작업 | 파일 | 주기 | 입력 | 출력(ops.duckdb) | 비고 |
 |---|---|---|---|---|---|
-| collect_rent | `py/jobs/collect_rent.py` | 매시 15분 | `tbCycleRentData` | `raw_rent`, `rent_hours_done`, 뷰 `trips_live` | 직전 시간대 + 빠진 시간대 전부(따라잡기), 3시간 전 재수집. 멱등 |
+| collect_rent | `py/jobs/collect_rent.py` | 매시 15분 | `tbCycleRentData` | `raw_rent`, `rent_hours_done`, 뷰 `trips_live` | 직전 시간대 + 빠진 시간대 전부(따라잡기), 3시간 전·24시간 전 재수집(긴 대여는 반납 뒤에야 나옴). 멱등 |
 | detect_sham | `py/jobs/detect_sham.py` | 매시 20분 | `trips_live` | `alerts_live` | 연속 2회 헛대여(2 ~ 3분) → 경보. 24시간 중복 제외 |
+| hourly | `py/jobs/hourly.py` | 매시 25분 | `tbCycleFailureReport`(collect_fail을 부름), `trips_live`, `bike_risk_latest` | `reported_recent`, `bike_risk_latest`의 위치 열 → `serving/` 4개 발행 | 점검 대상 지도가 보는 시점에 가깝게(2026-10-09). 점수·등급은 안 바꿈. 위치는 실제보다 1 ~ 2시간 늦음(반납 뒤·시간대가 끝나야 API에 나옴). 실측 약 5초 |
 | collect_fail | `py/jobs/collect_fail.py` | 매일 06:10 | `tbCycleFailureReport` | `raw_fail`, 뷰 `fail_live` | 최근 7일 다시 받음. 0건인 날 경보 |
 | collect_wx | `py/jobs/collect_wx.py` | 06:30 (obs), 05:20·17:20 (fcst) | ASOS 시간자료, 단기예보(+103h), 중기예보(4 ~ 10일, 06·18시 발표) | `wx_hourly_live`, `fcst_archive`(src = short / mid) | 예보는 발표 시각과 함께 → 1C '실제 예보' 백테스트 재료. 중기 API 승인 확인 2026-10-07 |
 | collect_station | `py/jobs/collect_station.py` | 월 05:00 | 대여소 API 2종 | `station_hist`, `station_live` | 새 대여소만 고도 API |
@@ -24,6 +25,7 @@
 ```
 15 *  * * *  cd ~/dareungi && .venv/bin/python py/jobs/collect_rent.py    >> logs/rent.log 2>&1
 20 *  * * *  cd ~/dareungi && .venv/bin/python py/jobs/detect_sham.py     >> logs/sham.log 2>&1
+25 *  * * *  cd ~/dareungi && .venv/bin/python py/jobs/hourly.py          >> logs/hourly.log 2>&1
 20 5  * * *  cd ~/dareungi && .venv/bin/python py/jobs/collect_wx.py fcst >> logs/wx.log 2>&1
 10 6  * * *  cd ~/dareungi && .venv/bin/python py/jobs/collect_fail.py    >> logs/fail.log 2>&1
 30 6  * * *  cd ~/dareungi && .venv/bin/python py/jobs/collect_wx.py obs  >> logs/wx.log 2>&1
@@ -40,9 +42,9 @@
 
 | 상황 | 할 일 |
 |---|---|
-| 작업이 중간에 죽음 | 그냥 다시 실행. 멱등이라 같은 시간대를 두 번 받아도 결과 같음. 잠금 파일이 30분 넘게 남아 있으면 자동으로 지움 |
+| 작업이 중간에 죽음 | 그냥 다시 실행. 멱등이라 같은 시간대를 두 번 받아도 결과 같음. 잠금 파일을 만든 작업이 죽었으면 다음 작업이 자동으로 지움(살아 있는 작업의 잠금은 오래 걸려도 그대로) |
 | 특정 날짜를 다시 받고 싶음 | `collect_rent.py 2026-10-06` (그 날 24시간대) |
-| 백필 뒤 주별 요약 다시 | `daily.py --rebuild-from 2026-06-29` (그 주부터 API 자료로 자전거별 주간 요약을 다시 만든다. 매일 실행은 이번 주만) |
+| 백필 뒤 주별 요약 다시 | `daily.py --rebuild-from 2026-06-29` (그 주부터 API 자료로 자전거별 주간 요약을 다시 만든다. 매일 실행은 이번 주와 지난주) |
 | 고장신고 과거 구간 | `collect_fail.py range 2026-07-01 2026-10-07` (28일씩) |
 | 반기 파일과 API 사이 공백(2026-07-01 ~ 10-04) | `PYTHONUNBUFFERED=1 nohup .venv/bin/python py/jobs/backfill_rent.py 2026-07-01 2026-10-04 > logs/backfill.log &` — 한 시간대씩 받고 3초 쉬어 다른 작업이 끼어들 수 있게. 시간대당 약 20초, 전체 약 10시간(2026-10-07 밤 시작). 멈추면 같은 명령으로 이어서(받은 시간대는 건너뜀) |
 | 주간 예측 대여량 모형 다시 맞춤 | `py/forecast/kma_forecast.py`(보정값) → `py/forecast/fc_ops_fit.py`(재현 확인 뒤 저장) → `actuals.py track_hist`(과거 주 예보판) |
@@ -55,7 +57,7 @@
 |---|---|---|
 | 시간대별 대여 건수 급감 | 지난주 같은 시간의 30% 미만 | 3시간 뒤 재수집은 자동(3시간 전 재수집). 계속되면 API 장애 |
 | 작업 실패 | `job_runs.status = 'fail'` | 로그 확인 후 재실행 |
-| 안 도는 작업 | 마지막 성공이 26시간 이상 전 | crontab·맥북 절전 확인 |
+| 안 도는 작업 | 수집은 마지막 성공이 26시간 이상 전, weekly는 8일 이상 전 | crontab·맥북 절전 확인 |
 | 고장신고 0건인 날 | — | API 지연. 다음 날 7일 재수집으로 채워짐 |
 
 `ALERT_WEBHOOK`(.env)이 있으면 디스코드·슬랙으로도 보낸다. 없으면 로그에만.

@@ -36,20 +36,44 @@ def connect(path="data/db/ops.duckdb"):
     return con
 
 
+def _lock_is_stale():
+    """잠금 파일을 만든 프로세스가 이미 끝났으면 True. 프로세스 번호를 못 읽으면 30분 넘은 잠금만 죽은 것으로 본다."""
+    try:
+        pid = int(LOCK.read_text().strip())
+    except (OSError, ValueError):
+        return LOCK.exists() and time.time() - LOCK.stat().st_mtime > 1800
+    try:
+        os.kill(pid, 0)                     # 신호를 보내지 않고 살아 있는지만 본다
+        return False
+    except ProcessLookupError:
+        return True
+    except PermissionError:                 # 다른 사용자의 살아 있는 프로세스
+        return False
+
+
 @contextmanager
 def job_lock(wait_s=2, tries=150):
-    """잠금 파일로 DB 사용 순서를 맞춘다. 2초 간격으로 최대 5분 기다리고, 30분 넘은 잠금은 죽은 작업의 것으로 보고 지운다."""
+    """잠금 파일로 DB 사용 순서를 맞춘다. 2초 간격으로 최대 5분 기다린다.
+
+    파일은 open(..., "x")로 만들어서, 두 작업이 같은 순간에 시작해도 한쪽만 잡는다(있는지 보고 쓰는 두 단계로 하면 둘 다 잡을 수 있다).
+    잡은 프로세스가 죽어 남은 잠금은 지운다. 살아 있는 작업의 잠금은 오래 걸려도 건드리지 않는다.
+    """
     for _ in range(tries):
-        if LOCK.exists() and time.time() - LOCK.stat().st_mtime > 1800:
-            LOCK.unlink()
-        if not LOCK.exists():
-            LOCK.write_text(str(os.getpid()))
-            try:
-                yield
-            finally:
+        try:
+            fd = os.open(LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            if _lock_is_stale():
                 LOCK.unlink(missing_ok=True)
-            return
-        time.sleep(wait_s)
+                continue
+            time.sleep(wait_s)
+            continue
+        with os.fdopen(fd, "w") as fh:
+            fh.write(str(os.getpid()))
+        try:
+            yield
+        finally:
+            LOCK.unlink(missing_ok=True)
+        return
     raise RuntimeError("DB 잠금을 얻지 못했다(다른 작업이 오래 돌고 있음)")
 
 
@@ -119,14 +143,25 @@ def table_exists(con, name):
 
 
 def upsert_rows(con, table, df, delete_where=None, params=()):
-    """원자료를 문자열 그대로 넣는다(형 변환은 뷰에서 한다). delete_where가 있으면 그 범위를 먼저 지워서 다시 돌려도 결과가 같다."""
-    if table_exists(con, table) and delete_where:
-        con.execute(f"DELETE FROM {table} WHERE {delete_where}", list(params))
+    """원자료를 문자열 그대로 넣는다(형 변환은 뷰에서 한다). delete_where가 있으면 그 범위를 먼저 지워서 다시 돌려도 결과가 같다.
+
+    빈 df면 아무것도 지우지 않는다. API가 잠깐 빈 응답을 줘도 이미 받은 행이 남게 하려는 것이다.
+    지우기와 넣기는 한 트랜잭션이라, 넣다가 실패하면(API 필드 변경 등) 지운 것도 되돌린다.
+    """
     if df is None or df.empty:
         return 0
     con.register("df_", df)
-    if not table_exists(con, table):
-        con.execute(f"CREATE TABLE {table} AS SELECT * FROM df_ LIMIT 0")
-    con.execute(f"INSERT INTO {table} BY NAME SELECT * FROM df_")      # API에 새 필드가 생기면 여기서 오류가 나서 스키마 변화를 알 수 있다
-    con.unregister("df_")
+    con.begin()
+    try:
+        if table_exists(con, table) and delete_where:
+            con.execute(f"DELETE FROM {table} WHERE {delete_where}", list(params))
+        if not table_exists(con, table):
+            con.execute(f"CREATE TABLE {table} AS SELECT * FROM df_ LIMIT 0")
+        con.execute(f"INSERT INTO {table} BY NAME SELECT * FROM df_")  # API에 새 필드가 생기면 여기서 오류가 나서 스키마 변화를 알 수 있다
+        con.commit()
+    except Exception:
+        con.rollback()
+        raise
+    finally:
+        con.unregister("df_")
     return len(df)

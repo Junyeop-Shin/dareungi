@@ -6,7 +6,9 @@ output/models/risk_spec.json에 적는다. 이 파일은 테스트 전에 커밋
 --test를 주면 학습+검증(2024-01 ~ 2025-12) 전체로 검증 때 정한 반복 수만큼 다시 학습하고,
 2026-01 ~ 06 테스트 행을 채점해 베이스라인과 나란히 저장한다.
 
-주의: 테스트는 한 번만 돌린다. 결과를 보고 설정을 바꾸지 않는다.
+주의: 테스트는 한 번만 돌린다(2026-10-07에 열었다). 결과를 보고 설정을 바꾸지 않는다.
+      risk_spec.json이 이미 있으면 다시 쓰지 않고 읽기만 한다. 그 뒤 표시 문구·등급 기준 설명을 손으로 고쳤기 때문에(결정 로그
+      2026-10-08), 다시 쓰면 그 내용이 사라진다. risk_eval_test.csv가 있으면 --test는 거부한다.
 
 입력: output/models/risk_spec_valid.json (risk_lgb.py), data/processed/panel/bike_week.parquet
 출력: output/models/risk_spec.json
@@ -103,6 +105,8 @@ REASONS = {
 
 
 def freeze():
+    if SPEC.exists():
+        raise SystemExit(f"{SPEC.name}이 이미 있다 — 고정한 설정은 다시 쓰지 않는다")
     v = json.load(open(ROOT / "output/models/risk_spec_valid.json", encoding="utf-8"))
     spec = {
         "version": str(date.today()), "fixed_on": str(date.today()),
@@ -165,6 +169,12 @@ def test(spec):
 
 
 if __name__ == "__main__":
-    spec = freeze()
+    if SPEC.exists():
+        spec = json.load(open(SPEC, encoding="utf-8"))
+        print(f"이미 고정됨: {SPEC.name} (version {spec.get('version')}) — 다시 쓰지 않는다")
+    else:
+        spec = freeze()
     if "--test" in sys.argv:
+        if (ROOT / "output/tables/risk_eval_test.csv").exists():
+            raise SystemExit("테스트 구간은 이미 한 번 채점했다(risk_eval_test.csv) — 다시 돌리지 않는다")
         test(spec)

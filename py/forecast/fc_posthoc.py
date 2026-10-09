@@ -11,7 +11,8 @@
 입력: data/processed/daily_master_v2.parquet(fc.load_master), 기상청 예보(시나리오 B)
 출력: output/tables/fc_posthoc_lvl1.csv       검증·테스트 skill, bias%, 계수(원래 판 / 계수 1 고정 / 구조 나이브)
       output/tables/fc_posthoc_lvl1_half.csv  테스트 반기별
-실행: .venv/bin/python py/forecast/fc_posthoc.py  (저장소 루트, 2~3분)
+실행: .venv/bin/python py/forecast/fc_posthoc.py          검증 구간만 계산해 화면에 보인다(표는 그대로 둔다)
+      .venv/bin/python py/forecast/fc_posthoc.py --test   테스트 구간까지 채점해 위 표를 다시 쓴다(2026-10-07에 한 번 돌렸다)
 """
 import sys
 import warnings
@@ -72,10 +73,11 @@ def run_split(m, base, split, end):
 
 
 def main():
+    with_test = "--test" in sys.argv                 # 테스트 구간은 명시했을 때만 연다
     m = load_master()
-    base = make_base(m, include_test=True)
+    base = make_base(m, include_test=with_test)
     out, half = [], []
-    for split, end in [("valid", TRAIN_DAYS[1]), ("test", "2024-12-31")]:
+    for split, end in [("valid", TRAIN_DAYS[1])] + ([("test", "2024-12-31")] if with_test else []):
         p, sc = run_split(m, base, split, end)
         out.append(sc)
         if split == "test":
@@ -90,8 +92,11 @@ def main():
     tab = pd.concat(out)
     tab["부품"] = tab.part.map(PARTS)
     tab = tab[["split", "부품", "model", "n", "MAE", "MAEpct", "skill", "bias%", "log(lvl) 계수(원래 판)"]].round(3)
-    tab.to_csv(ROOT / "output/tables/fc_posthoc_lvl1.csv", index=False)
-    half.to_csv(ROOT / "output/tables/fc_posthoc_lvl1_half.csv", index=False)
+    if with_test:
+        tab.to_csv(ROOT / "output/tables/fc_posthoc_lvl1.csv", index=False)
+        half.to_csv(ROOT / "output/tables/fc_posthoc_lvl1_half.csv", index=False)
+    else:
+        print("검증 구간만 계산했다(--test 없음). 저장된 표는 그대로 둔다.")
     print(tab.pivot(index=["split", "부품"], columns="model", values="skill").round(3).to_string())
     print(tab.pivot(index=["split", "부품"], columns="model", values="bias%").round(1).to_string())
 

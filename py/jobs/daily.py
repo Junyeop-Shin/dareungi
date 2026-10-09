@@ -3,7 +3,7 @@
 순서:
   1. trips_live_x: 최근 21일 API 대여이력에 2A-7과 같은 파생 열을 붙인다(통행 구분, 직선거리·고도차,
      대여 시각 날씨, 직전 반납 대여소와 다른 곳에서 빌렸는지).
-  2. 주별 요약(bw_usage·bw_fail)은 이번 주만 다시 만든다(월요일이면 지난주도). 끝난 주는 바뀌지 않는다.
+  2. 주별 요약(bw_usage·bw_fail)은 이번 주와 지난주를 매일 다시 만든다. 그보다 앞선 주는 바뀌지 않는다.
   3. 패널(panel)을 주별 요약 전체로 다시 계산한다(2A-9와 같은 SQL, py/panel_sql.py). panel_latest는 가장 최근 완결 주.
   4. 데이터 품질 점검(3A-7): 시간대별 대여가 지난주 같은 시간의 30% 미만, 작업 실패, 26시간 넘게 안 돈 작업.
   5. bike_card(시민 조회용, 런북 08)와 reported_recent를 만들어 스냅샷으로 발행한다.
@@ -34,7 +34,7 @@ REBUILD_FROM = None    # --rebuild-from YYYY-MM-DD(월요일)로 주면 그 주�
 
 
 def build_trips_live_x(con, since=None):
-    hol = (ROOT / "data/raw/calendar/holidays_2016_2026.csv").as_posix()
+    hol = (ROOT / "data/raw/calendar/holidays_*.csv").as_posix()      # 연도별 파일 전부(2016 ~ 2026 + py/build/holidays.py로 받은 해)
     con.execute(f"CREATE OR REPLACE TABLE holidays AS SELECT DISTINCT CAST(date AS DATE) AS date FROM read_csv('{hol}', header = true)")
     station = "station_live" if table_exists(con, "station_live") else "station_base"
     con.execute(f"""
@@ -67,9 +67,9 @@ def build_trips_live_x(con, since=None):
 
 def refresh_weeks(con, today, cut=None):
     if cut is None:
-        cut = today - dt.timedelta(days=today.weekday())             # 이번 주 월요일
-        if today.weekday() == 0:
-            cut -= dt.timedelta(days=7)                               # 월요일이면 지난주도
+        # 이번 주와 지난주를 매일 다시 만든다. 월요일에만 지난주를 만들면 그날 실행을 놓쳤을 때 일요일 대여가 빠지고,
+        # 하루 늦게 들어온 신고와 '신고 뒤 48시간 대여 없음(수리 추정)' 판정이 일요일 저녁 신고에서 몇 시간 만에 굳어 버린다
+        cut = today - dt.timedelta(days=today.weekday() + 7)          # 지난주 월요일
     con.execute("DELETE FROM bw_usage WHERE wk >= ?", [cut])
     con.execute("INSERT INTO bw_usage BY NAME " + BW_USAGE_SELECT.format(sh_cl=sh_cl_expr(), src="trips_live_x", cluster="station_cluster",
                                                                         extra_where=f"AND rent_dt >= DATE '{cut}'"))
@@ -114,8 +114,10 @@ def quality_checks(con):
     fails = con.sql("SELECT job, max(ts) AS ts FROM job_runs WHERE status = 'fail' AND ts >= now() - INTERVAL 1 DAY GROUP BY 1").df()
     if len(fails):
         issues.append(("작업 실패", ", ".join(f"{r.job}@{r.ts:%m-%d %H:%M}" for r in fails.itertuples())))
+    # 수집은 26시간, 매주 작업(위험 점수·주간 예측)은 8일 넘게 성공이 없으면 경보. cron은 잠든 동안 놓친 실행을 따라잡지 않는다
     stale = con.sql("""SELECT job, max(ts) AS last_ok FROM job_runs WHERE status = 'ok' GROUP BY 1
-                       HAVING max(ts) < now() - INTERVAL 26 HOUR AND job IN ('collect_rent', 'collect_fail', 'collect_wx_obs')""").df()
+                       HAVING (job IN ('collect_rent', 'collect_fail', 'collect_wx_obs') AND max(ts) < now() - INTERVAL 26 HOUR)
+                           OR (job = 'weekly' AND max(ts) < now() - INTERVAL 8 DAY)""").df()
     if len(stale):
         issues.append(("안 도는 작업", ", ".join(f"{r.job}(마지막 {r.last_ok:%m-%d %H:%M})" for r in stale.itertuples())))
     for name, detail in issues:

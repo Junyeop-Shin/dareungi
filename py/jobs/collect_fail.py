@@ -36,6 +36,8 @@ def run(days=7):
             if not df.empty:
                 df["reg_date"] = pd.to_datetime(df["regDttm"], errors="coerce").dt.date.astype(str)
                 df = df[df.reg_date >= str(start)]
+            if df.empty:                                  # 7일 동안 신고가 0건일 리 없다. 기존 행을 지우지 않고 실패로 남긴다
+                raise RuntimeError(f"고장신고 API가 {start} 이후 0건을 돌려줌 — 기존 행은 그대로 두었다")
             n = upsert_rows(con, "raw_fail", df, "reg_date >= ?", (str(start),))
             if table_exists(con, "raw_fail"):
                 con.execute(VIEW)
@@ -66,6 +68,8 @@ def run_range(a, b, step=28):
                 if not df.empty:
                     df["reg_date"] = pd.to_datetime(df["regDttm"], errors="coerce").dt.date.astype(str)
                     df = df[(df.reg_date >= str(d)) & (df.reg_date <= str(e))]
+                if df.empty:
+                    raise RuntimeError(f"고장신고 API가 {d} ~ {e}에 0건을 돌려줌 — 기존 행은 그대로 두었다")
                 n = upsert_rows(con, "raw_fail", df, "reg_date BETWEEN ? AND ?", (str(d), str(e)))
                 total += n
                 print(f"collect_fail range: {d} ~ {e} {n}행", flush=True)

@@ -35,3 +35,6 @@ output/models/*.parquet
 serving/
 logs/
 data/db/.ops.lock
+
+# 화면 캡처(tests/screens.py)
+output/screens/
