@@ -1,4 +1,4 @@
-"""고장신고 수집(런북 07, 3A-4). 매일 06:10.
+"""고장신고 수집(런북 07, 3A-4). 매시 hourly.py가 부른다(따로 예약하지 않는다).
 
 tbCycleFailureReport로 최근 7일 신고를 매일 다시 받아 raw_fail에 넣는다. 늦게 등록되는 신고가 있어서
 며칠치를 겹쳐 받고, 받은 날짜 범위는 지우고 다시 넣는다. API 시차는 0 ~ 1일이다.
@@ -22,7 +22,7 @@ from common import alert, connect, fetch_all, job_lock, log_run, table_exists, u
 VIEW = """
 CREATE OR REPLACE VIEW fail_live AS
 SELECT TRY_CAST(regexp_extract(bikeNo, '[0-9]+') AS INTEGER) AS bike_id, TRY_CAST(regDttm AS TIMESTAMP) AS reg_ts,
-       trim(mlangComCdName) AS kind, CAST(reg_date AS DATE) AS reg_date
+       trim(mlangComCdName) AS kind, TRY_CAST(reg_date AS DATE) AS reg_date
 FROM raw_fail"""
 
 

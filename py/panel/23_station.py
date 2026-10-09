@@ -14,8 +14,7 @@ trips의 대여·반납 대여소번호 중 좌표를 못 찾는 비율을 재�
 
 입력: 서울 API(.env의 SEOUL_API_KEY), DuckDB trips
 출력: data/interim/station_master.csv, DuckDB station, output/tables/panel_2a3_station_checks.csv
-실행: .venv/bin/python py/panel/23_station.py            (API 수집, 커버리지 확인, 고도)
-      .venv/bin/python py/panel/23_station.py --no-elev  (고도 생략)
+실행: .venv/bin/python py/panel/23_station.py   (API 수집, 커버리지 확인, 고도)
 """
 import sys
 import time
@@ -87,13 +86,12 @@ def elevation(st):
     return st.merge(ok[["st_id", "elev_m"]], on="st_id", how="left")
 
 
-def main(do_elev=True):
+def main():
     st, n_info, n_master, n_badcoord = fetch()
     con = connect()
     cov, missing = coverage(con, st)
-    if do_elev:
-        st = elevation(st)
-        con.execute("CREATE OR REPLACE TABLE station AS SELECT * FROM st WHERE st_no IS NOT NULL")
+    st = elevation(st)
+    con.execute("CREATE OR REPLACE TABLE station AS SELECT * FROM st WHERE st_no IS NOT NULL")
     st.to_csv(OUT, index=False)
     checks = pd.DataFrame([
         {"항목": "tbCycleStationInfo 행", "값": n_info}, {"항목": "bikeStationMaster 행", "값": n_master},
@@ -103,14 +101,14 @@ def main(do_elev=True):
         {"항목": "반납 대여소번호 중 좌표 없는 비율", "값": float(cov.loc[cov.side == "rtn_st", "unknown_share"].iloc[0])},
         {"항목": "대여이력에 나온 대여 대여소 수", "값": int(cov.loc[cov.side == "rent_st", "n_st"].iloc[0])},
         {"항목": "번호 있는 대여소 수", "값": int(st.st_no.notna().sum())},
-    ] + ([{"항목": "고도 중앙값(m)", "값": float(st.elev_m.median())}, {"항목": "고도 99%(m)", "값": float(st.elev_m.quantile(0.99))}] if do_elev else []))
+        {"항목": "고도 중앙값(m)", "값": float(st.elev_m.median())}, {"항목": "고도 99%(m)", "값": float(st.elev_m.quantile(0.99))},
+    ])
     checks.to_csv(ROOT / "output/tables/panel_2a3_station_checks.csv", index=False)
     print(checks.to_string(index=False))
     print("좌표 없는 대여소 상위:", missing.to_string(index=False))
-    if do_elev:
-        print(st.sort_values("elev_m", ascending=False)[["st_name", "district", "elev_m"]].head(8).to_string(index=False))
-        print(st[st.han_river == 1][["st_name", "elev_m"]].head(8).to_string(index=False))
+    print(st.sort_values("elev_m", ascending=False)[["st_name", "district", "elev_m"]].head(8).to_string(index=False))
+    print(st[st.han_river == 1][["st_name", "elev_m"]].head(8).to_string(index=False))
 
 
 if __name__ == "__main__":
-    main(do_elev="--no-elev" not in sys.argv)
+    main()

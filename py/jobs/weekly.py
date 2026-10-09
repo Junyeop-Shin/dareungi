@@ -145,6 +145,9 @@ def run():
         try:
             if not table_exists(con, "panel_latest"):
                 raise RuntimeError("panel_latest 없음 — daily.py 먼저")
+            pwk = con.execute("SELECT max(wk) FROM panel_latest").fetchone()[0]
+            if pwk is None or pd.Timestamp(pwk).date() != monday - dt.timedelta(days=7):   # daily가 안 돌았거나 지난주 자료가 비면 옛 주 점수가 '이번 주 추천'으로 나간다
+                raise RuntimeError(f"panel_latest가 지난주({monday - dt.timedelta(days=7)})가 아니라 {pwk} 주다 — daily.py를 먼저 돌린다")
             wk, n, grades = score_risk(con)
             risk_track.save_history(con)                 # 이번 주에 누구를 추천했는지 남기고
             ev = risk_track.evaluate(con)                # 지난 추천이 그다음 주에 실제로 신고됐는지 채점한다(다음 주가 다 지난 주만)

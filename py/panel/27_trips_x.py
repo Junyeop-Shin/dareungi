@@ -13,7 +13,7 @@ use_m_fixed는 거리 기록이 잘못된 행(dist_bad)을 직선거리 × 우�
 둘 다 아니면 기타다. 주말 출근 시간대 통행은 leisure이고, 평일 출퇴근 시간에 한강 대여소를 오간 통행은
 commute와 leisure가 둘 다 참이다.
 
-입력: DuckDB trips, od, station, wx_h
+입력: DuckDB trips, od(24_od.py), station, wx_h
 출력: DuckDB holidays, trips_x, trips_seq, output/tables/panel_2a7_checks.csv
 실행: .venv/bin/python py/panel/27_trips_x.py  (5~15분. 창 함수는 연도로 나누지 않아도 메모리 8GB에서 돌았다)
 """

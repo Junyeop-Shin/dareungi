@@ -125,7 +125,7 @@ from prep import to_utf8, std_name, read_any, data_files, make_utf8_folder
 | `prep.py`, `seoul_api.py`, `db.py`, `common.py` | 인코딩·파일 읽기, 서울 열린데이터 API, 분석 DB 연결, 운영 공통(운영 DB·API·경보·잠금) |
 | `nbreg.py`, `fc.py`, `fc_models.py`, `fc_dl.py`, `fc_expo.py`, `fc_ops.py`, `panel_sql.py` | 공용 모듈: 음이항 회귀(1B), 1C 예측 과제·모형·GRU·대여량 모형, 운영 주간 예측(예보판·달력판), 패널 SQL(분석·운영 같이) |
 | `build/` | 1A: 원본을 날짜별·자전거별로 합산(`use_daily`, `rent_history_daily`, `bike_month`), 고장신고 빠진 날 API 수집(`failure_gaps`), 일별 신호(`day_signal`), 공휴일 표 받기(`holidays`) |
-| `panel/` | 2A: `21_rent_to_parquet` ~ `29_panel` 대여이력 적재 → 정제 → 대여소·고도 → 날씨 → 군집 → 통행 테이블 → 신고 결합 → 자전거×주 패널. **같은 원본을 두 번 적재하면 중복** |
+| `panel/` | 2A: `21_rent_to_parquet` ~ `29_panel` 대여이력 적재 → 정제 → 대여소·고도 → 출발·도착 쌍(`24_od`) → 날씨 → 군집 → 통행 테이블 → 신고 결합 → 자전거×주 패널. **2026-10-10 전에 적재한 달을 다시 넣으면 중복**(그 뒤 적재분은 달 표시가 있어 다시 넣어도 된다) |
 | `forecast/` | 1C·운영 예측: 기상청 과거 예보 정리(`kma_forecast`, JMA는 참고 `weather_forecast`), 부록 B 사후 분석(`fc_posthoc`), 보고서 그림(`report_figs`), 운영 대여량 모형 고정·재현(`fc_ops_fit`), 테스트 뒤 주 비교(`fc_ops_compare`), 강건성 점검(`robustness`, `docs/notes/07`) |
 | `risk/` | 2B: 평가·베이스라인(`risk_eval`), LightGBM 포아송 + km offset(`risk_lgb`), 해석 모형, 헛대여 경보 검증, 순위 안정성(`risk_stability`), 설정 고정·테스트(`risk_freeze --test`는 **사람 승인 뒤 한 번만**), 도입 효과 시나리오(`impact_scenario`, 저장된 테스트 결과만 읽음) |
 | `regime/` | 04b 레짐 원인 사후 분석(`rc_*`). 결과는 `docs/notes/04` |

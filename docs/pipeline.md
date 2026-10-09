@@ -9,7 +9,7 @@
 | collect_rent | `py/jobs/collect_rent.py` | 매시 15분 | `tbCycleRentData` | `raw_rent`, `rent_hours_done`, 뷰 `trips_live` | 직전 시간대 + 빠진 시간대 전부(따라잡기), 3시간 전·24시간 전 재수집(긴 대여는 반납 뒤에야 나옴). 멱등 |
 | detect_sham | `py/jobs/detect_sham.py` | 매시 20분 | `trips_live` | `alerts_live` | 연속 2회 헛대여(2 ~ 3분) → 경보. 24시간 중복 제외 |
 | hourly | `py/jobs/hourly.py` | 매시 25분 | `tbCycleFailureReport`(collect_fail을 부름), `trips_live`, `bike_risk_latest` | `reported_recent`, `bike_risk_latest`의 위치 열 → `serving/` 4개 발행 | 점검 대상 지도가 보는 시점에 가깝게(2026-10-09). 점수·등급은 안 바꿈. 위치는 실제보다 1 ~ 2시간 늦음(반납 뒤·시간대가 끝나야 API에 나옴). 실측 약 5초 |
-| collect_fail | `py/jobs/collect_fail.py` | 매일 06:10 | `tbCycleFailureReport` | `raw_fail`, 뷰 `fail_live` | 최근 7일 다시 받음. 0건인 날 경보 |
+| collect_fail | `py/jobs/collect_fail.py` | hourly가 매시 부름(따로 예약 안 함) | `tbCycleFailureReport` | `raw_fail`, 뷰 `fail_live` | 최근 7일 다시 받음. 0건인 날 경보 |
 | collect_wx | `py/jobs/collect_wx.py` | 06:30 (obs), 05:20·17:20 (fcst) | ASOS 시간자료, 단기예보(+103h), 중기예보(4 ~ 10일, 06·18시 발표) | `wx_hourly_live`, `fcst_archive`(src = short / mid) | 예보는 발표 시각과 함께 → 1C '실제 예보' 백테스트 재료. 중기 API 승인 확인 2026-10-07 |
 | collect_station | `py/jobs/collect_station.py` | 월 05:00 | 대여소 API 2종 | `station_hist`, `station_live` | 새 대여소만 고도 API |
 | daily | `py/jobs/daily.py` | 매일 07:00 | 위 표들 + `actuals.refresh()`(일 × 자치구 실적 → `weekly_actual`·`daily_reports`·`forecast_track`) | `trips_live_x`, `bw_usage`·`bw_fail`(이번 주), `panel`, `panel_latest`, `bike_card`, `quality_log` | 품질 점검 + 스냅샷 |
@@ -27,7 +27,6 @@
 20 *  * * *  cd ~/dareungi && .venv/bin/python py/jobs/detect_sham.py     >> logs/sham.log 2>&1
 25 *  * * *  cd ~/dareungi && .venv/bin/python py/jobs/hourly.py          >> logs/hourly.log 2>&1
 20 5  * * *  cd ~/dareungi && .venv/bin/python py/jobs/collect_wx.py fcst >> logs/wx.log 2>&1
-10 6  * * *  cd ~/dareungi && .venv/bin/python py/jobs/collect_fail.py    >> logs/fail.log 2>&1
 30 6  * * *  cd ~/dareungi && .venv/bin/python py/jobs/collect_wx.py obs  >> logs/wx.log 2>&1
 0  7  * * *  cd ~/dareungi && .venv/bin/python py/jobs/daily.py           >> logs/daily.log 2>&1
 30 7  * * 1  cd ~/dareungi && .venv/bin/python py/jobs/weekly.py          >> logs/weekly.log 2>&1
@@ -42,7 +41,7 @@
 
 | 상황 | 할 일 |
 |---|---|
-| 작업이 중간에 죽음 | 그냥 다시 실행. 멱등이라 같은 시간대를 두 번 받아도 결과 같음. 잠금 파일을 만든 작업이 죽었으면 다음 작업이 자동으로 지움(살아 있는 작업의 잠금은 오래 걸려도 그대로) |
+| 작업이 중간에 죽음 | 그냥 다시 실행. 멱등이라 같은 시간대를 두 번 받아도 결과 같음. 잠금은 flock이라 작업이 죽으면 저절로 풀림(잠금 파일은 남아 있어도 된다) |
 | 특정 날짜를 다시 받고 싶음 | `collect_rent.py 2026-10-06` (그 날 24시간대) |
 | 백필 뒤 주별 요약 다시 | `daily.py --rebuild-from 2026-06-29` (그 주부터 API 자료로 자전거별 주간 요약을 다시 만든다. 매일 실행은 이번 주와 지난주) |
 | 고장신고 과거 구간 | `collect_fail.py range 2026-07-01 2026-10-07` (28일씩) |
@@ -66,7 +65,7 @@
 
 1. 새 반기 파일을 `py/panel/21_rent_to_parquet.py`로 Parquet에 추가 → `py/panel/22_trips_clean.py` ~ `py/panel/29_panel.py` 다시.
 2. 같은 기간 API 수집분과 날짜·시간대별 건수, 자전거별 건수를 비교해 `docs/reconcile_YYYYH.md`에 적는다.
-3. 그 기간은 공식 파일로 덮어쓴다(`init_ops.py`로 주별 요약 재복사).
+3. 그 기간은 공식 파일로 덮어쓴다(`init_ops.py`로 주별 요약 재복사). `init_ops.py`는 공식 파일이 끝난 뒤의 주별 요약을 지우고 매일 작업은 이번 주·지난주만 다시 만들므로, 바로 이어서 `daily.py --rebuild-from <공식 파일이 끝난 다음 첫 월요일>`을 돌려 그 뒤 주를 API 자료로 다시 채운다(안 하면 '마지막 신고 이후 누적'이 끊긴다).
 4. 새 자료로 재학습(검증 구간 재설정)하고 기존 모형과 비교해 나아졌을 때만 교체(모형 파일 이름에 날짜).
 
 ## 알려진 차이·한계
@@ -106,6 +105,8 @@
 | 주간 예측의 대여량 모형 | `forecast_track`의 전체 신고 오차(예측 모형 · 기준값) | **확정(사람, 2026-10-10): 최근 12주 오차가 기준값(지난주와 같다고 가정)보다 크다.** `actuals.retrain_check`가 매주 월요일에 확인해 경보를 보낸다. **조건에 걸리지 않아도 해마다 1월에 다시 맞춘다(확정, 사람 2026-10-10)** — 새해 공휴일 표를 넣으면서 학습 끝을 지난해 말까지 늘린다. 1월 첫 월요일에 알림이 간다 | `py/forecast/fc_ops_fit.py`의 학습 끝(`TEST_REFIT_END`)을 늘려 실행. 예측 구간도 같이 다시 계산된다 | 최근 26주를 빼고 맞춘 모형으로 그 26주를 예측해, 같은 26주에 대한 지금 계수의 오차(`forecast_track`)보다 작은지 본다. 작으면 26주까지 넣어 다시 맞춰 교체하고, 작지 않으면 바꾸지 않는다(학습에 넣은 주로 성적을 재면 늘 좋아 보이므로 빼고 잰다) |
 | 예보판 ↔ 달력판 | `fc_compare`(2026-10-12부터 12주) | 확정(2026-10-08): 12주 누적 오차가 달력판이 3%p 넘게 낮으면 교체 검토 | `fc_ops_spec.json`의 shown | — |
 | 위험 모형(점검 권장) | `risk_eval`의 주별 상위 1,000대 적중률(무작위 대비 배수), 부품별 신고 비중 | **확정(사람, 2026-10-10: AI 제안대로).** 채점이 8주 쌓일 때까지(2026-12 초)는 숫자만 쌓는다. 8주째에 알림 한 번: 처음 8주 평균이 2.7배 이상이면 기준은 **최근 8주 평균 2.5배 아래**, 그보다 낮으면 사람이 기준을 다시 정한다(운영 채점은 테스트와 집계가 달라 처음부터 낮을 수 있다). 근거: 2B 테스트에서 모형 3.0배, 주행량만 본 기준 2.7배. `risk_track.retrain_note`가 weekly에서 확인한다. 담당자가 추천 자전거를 손보기 시작하면 배수가 낮아지므로 그때는 이 조건을 그대로 쓰지 않는다. 부품 비중 순서는 2025년 3분기에 이미 바뀌어 조건이 아니라 v2에서 고칠 것으로 둔다 | 새 판(v2)으로 다시 만든다. 바꿀 것은 `docs/STATUS.md`의 v2 항목 | 테스트 구간을 이미 열었으므로 2026-07 이후 자료와 운영 주로 평가한다 |
+
+대여량 모형을 다시 맞출 때 같이 고칠 것(2026-10-10 코드 검토 7번): 단기예보에 강수형태(PTY)가 빠진 날은 `rain_any`가 0(비 없음)이 된다. 강수량 1mm 이상이면 비로 보는 대체 규칙(`fc_ops.py`, `kma_forecast.py`의 `fillna`)이 있지만, 그 앞에서 빈 값이 이미 0으로 바뀌어 한 번도 쓰이지 않는다. 학습 자료와 운영 입력이 같은 방식이라 지금 모형의 계수와는 맞는다. 운영 쪽만 고치면 학습 때와 입력이 달라지므로, 두 파일을 같이 고치고 `fc_ops_fit.py`로 다시 맞출 때 반영한다.
 
 공통 원칙: 다시 맞춘 모형은 파일 이름·설정의 version을 올리고 결정 로그에 남긴다. 결과가 나빠도 기준을 바꿔 좋게 보이게 하지 않는다.
 

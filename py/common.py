@@ -11,6 +11,7 @@ py/jobs/*.py 수집·갱신 작업이 같이 쓰는 것들: 운영 DB 연결, �
 사용: from common import connect, fetch_all, alert, log_run, table_exists, job_lock
 """
 import datetime as dt
+import fcntl
 import os
 import re
 import sys
@@ -37,46 +38,24 @@ def connect(path="data/db/ops.duckdb"):
     return con
 
 
-def _lock_is_stale():
-    """잠금 파일을 만든 프로세스가 이미 끝났으면 True. 프로세스 번호를 못 읽으면 30분 넘은 잠금만 죽은 것으로 본다."""
-    try:
-        pid = int(LOCK.read_text().strip())
-    except (OSError, ValueError):
-        return LOCK.exists() and time.time() - LOCK.stat().st_mtime > 1800
-    try:
-        os.kill(pid, 0)                     # 신호를 보내지 않고 살아 있는지만 본다
-        return False
-    except ProcessLookupError:
-        return True
-    except PermissionError:                 # 다른 사용자의 살아 있는 프로세스
-        return False
-
-
 @contextmanager
 def job_lock(wait_s=2, tries=150):
-    """잠금 파일로 DB 사용 순서를 맞춘다. 2초 간격으로 최대 5분 기다린다.
+    """잠금 파일에 flock을 걸어 DB 사용 순서를 맞춘다. 2초 간격으로 최대 5분 기다린다.
 
-    파일은 open(..., "x")로 만들어서, 두 작업이 같은 순간에 시작해도 한쪽만 잡는다(있는지 보고 쓰는 두 단계로 하면 둘 다 잡을 수 있다).
-    잡은 프로세스가 죽어 남은 잠금은 지운다. 살아 있는 작업의 잠금은 오래 걸려도 건드리지 않는다.
+    잠금은 운영체제가 들고 있어서 잡은 프로세스가 죽으면 저절로 풀린다(남은 잠금을 지우는 처리가 필요 없다).
+    파일 자체는 지우지 않는다. 지우면 기다리던 작업과 새 작업이 서로 다른 파일을 잡을 수 있다.
     """
-    for _ in range(tries):
-        try:
-            fd = os.open(LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError:
-            if _lock_is_stale():
-                LOCK.unlink(missing_ok=True)
-                continue
-            time.sleep(wait_s)
-            continue
-        with os.fdopen(fd, "w") as fh:
-            fh.write(str(os.getpid()))
-        try:
-            yield
-        finally:
-            LOCK.unlink(missing_ok=True)
-        return
-    alert("DB 잠금을 5분 동안 얻지 못해 작업을 건너뛴다(다른 작업이 오래 돌고 있음)")          # 작업의 try 밖에서 나는 예외라 여기서 알린다
-    raise RuntimeError("DB 잠금을 얻지 못했다(다른 작업이 오래 돌고 있음)")
+    with open(LOCK, "w") as fh:
+        for _ in range(tries):
+            try:
+                fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                time.sleep(wait_s)
+        else:
+            alert("DB 잠금을 5분 동안 얻지 못해 작업을 건너뛴다(다른 작업이 오래 돌고 있음)")          # 작업의 try 밖에서 나는 예외라 여기서 알린다
+            raise RuntimeError("DB 잠금을 얻지 못했다(다른 작업이 오래 돌고 있음)")
+        yield
 
 
 def fetch(service, start, end, *params, retries=4):

@@ -4,7 +4,7 @@
 메모리 DuckDB와 임시 잠금 파일로만 돈다. pytest가 없어도 python으로 바로 돌릴 수 있다.
 
   1. upsert_rows: 빈 응답이면 기존 행을 지우지 않는다. 넣다가 실패하면 지운 것도 되돌린다
-  2. job_lock: 한 번에 하나만 잡는다. 죽은 프로세스의 잠금은 지운다
+  2. job_lock: 한 번에 하나만 잡는다. 죽은 프로세스가 남긴 잠금 파일은 막지 않는다
   3. pending_hours: 처음엔 최근 3일, 그 뒤엔 빠진 시간대 + 3시간 전 + 24시간 전
   4. fc_ops._amount: 단기예보 강수량 문자열 네 가지
   5. fc_ops.levels: 날짜 d의 신고율은 d − 7일까지의 자료만 쓴다
@@ -121,9 +121,8 @@ def test_job_lock_exclusive_and_stale():
                 pass
         dead = subprocess.Popen([sys.executable, "-c", "pass"]); dead.wait()
         common.LOCK.write_text(str(dead.pid))                     # 끝난 프로세스가 남긴 잠금
-        with common.job_lock(wait_s=0, tries=2):
-            assert common.LOCK.read_text() == str(__import__("os").getpid())
-        assert not common.LOCK.exists()
+        with common.job_lock(wait_s=0, tries=2):                  # 파일이 남아 있어도 잡은 프로세스가 없으면 바로 잡힌다
+            pass
 
 
 def test_pending_hours():

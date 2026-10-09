@@ -5,8 +5,11 @@
   2020-10 ~ 2021-09  상세를 data/processed/rent_2021/에. 레짐 원인 분석(04b R3~R7)용
   2023-07 ~ 2026-06  상세를 data/processed/rent/에. 자전거×주 패널용
 처리한 파일은 docs/load_log.csv에 남기고, 다시 실행하면 거기서부터 이어 간다.
+달 하나를 쓰다가 죽으면 기록에는 없는데 자료는 일부 들어가 있다. 그래서 달마다 쓰기 전에 그 달이 남긴 것(bike_year의
+src가 그 달인 행, part_<YYMM>_*.parquet)을 먼저 지운다. 다시 실행해도 두 번 들어가지 않는다.
 
-주의: 같은 파일을 두 번 넣으면 행이 중복된다. 2020-21 상세를 rent/에 같이 두면 2A-9 패널이
+주의: 2026-10-10 전에 적재한 Parquet(part_<uuid>)과 bike_year 행(src 없음)은 달 표시가 없어 이 방법으로 못 지운다.
+그 달을 load_log.csv에서 지우고 다시 넣으면 중복된다. 2020-21 상세를 rent/에 같이 두면 2A-9 패널이
 2021-10 ~ 2023-06 공백을 연속된 주로 보고 '마지막 신고 이후 누적'이 틀어지므로 폴더를 나눴다.
 
 입력: data/raw/rent_history/서울특별시 공공자전거 대여이력 정보_<연도>.zip (2015~2025), ..._26MM.csv (2026)
@@ -40,6 +43,7 @@ C16 = {**C17, "bike_type": None}
 
 con = connect()
 con.execute("CREATE TABLE IF NOT EXISTS bike_year (bike_id INTEGER, y INTEGER, first_dt TIMESTAMP, n_trips BIGINT, km DOUBLE)")
+con.execute("ALTER TABLE bike_year ADD COLUMN IF NOT EXISTS src VARCHAR")    # 어느 달 파일에서 온 행인지(YYMM). 중간에 죽은 달을 다시 넣을 때 지우는 기준
 
 
 def _select(csv_path, c):
@@ -59,22 +63,27 @@ def _select(csv_path, c):
     """
 
 
-def to_parquet(csv_path, c, out):
-    """상세를 연·월 파티션으로 Parquet에 쓴다. 반환: (저장한 행 수, 날짜 파싱 실패 행 수)"""
+def to_parquet(csv_path, c, out, yymm):
+    """상세를 연·월 파티션으로 Parquet에 쓴다. 파일 이름에 달(YYMM)을 넣어, 쓰다 죽은 달의 조각을 다음 실행에서 지운다.
+
+    반환: (저장한 행 수, 날짜 파싱 실패 행 수)"""
+    for old in (ROOT / out).glob(f"y=*/m=*/part_{yymm}_*.parquet"):
+        old.unlink()
     con.execute(f"""
       COPY (SELECT *, year(rent_dt) AS y, month(rent_dt) AS m FROM ({_select(csv_path, c)}) WHERE rent_dt IS NOT NULL)
       TO '{(ROOT / out).as_posix()}'
-      (FORMAT PARQUET, PARTITION_BY (y, m), OVERWRITE_OR_IGNORE, FILENAME_PATTERN 'part_{{uuid}}')
+      (FORMAT PARQUET, PARTITION_BY (y, m), OVERWRITE_OR_IGNORE, FILENAME_PATTERN 'part_{yymm}_{{uuid}}')
     """)
     n_ok, n_bad = con.execute(f"SELECT count(rent_dt), count(*) - count(rent_dt) FROM ({_select(csv_path, c)})").fetchone()
     return n_ok, n_bad
 
 
-def summarize_year(csv_path, c, year):
-    """자전거별 연간 요약을 bike_year에 더한다(SUMMARY_UNTIL 전 대여만)"""
+def summarize_year(csv_path, c, yymm):
+    """자전거별 연간 요약을 bike_year에 더한다(SUMMARY_UNTIL 전 대여만). 그 달이 전에 남긴 행은 먼저 지운다"""
+    con.execute("DELETE FROM bike_year WHERE src = ?", [yymm])
     con.execute(f"""
     INSERT INTO bike_year
-    SELECT bike_id, {year} AS y, min(rent_dt) AS first_dt, count(*) AS n_trips, sum(use_m) / 1000 AS km
+    SELECT bike_id, {2000 + int(yymm[:2])} AS y, min(rent_dt) AS first_dt, count(*) AS n_trips, sum(use_m) / 1000 AS km, '{yymm}' AS src
     FROM ({_select(csv_path, c)})
     WHERE rent_dt IS NOT NULL AND rent_dt < TIMESTAMP '{SUMMARY_UNTIL}' AND bike_id IS NOT NULL
     GROUP BY 1
@@ -87,11 +96,11 @@ def process(csv_path, name, c):
     yymm = name[-8:-4]                                   # '..._2306.csv' → '2306'
     how, rows = [], {}
     if yymm < DETAIL_FROM:
-        rows["summary"] = summarize_year(csv_path, c, 2000 + int(yymm[:2])); how.append("summary")
+        rows["summary"] = summarize_year(csv_path, c, yymm); how.append("summary")
     if R3_RANGE[0] <= yymm <= R3_RANGE[1]:
-        rows["detail2021"] = to_parquet(csv_path, c, "data/processed/rent_2021"); how.append("detail2021")
+        rows["detail2021"] = to_parquet(csv_path, c, "data/processed/rent_2021", yymm); how.append("detail2021")
     if yymm >= DETAIL_FROM:
-        rows["detail"] = to_parquet(csv_path, c, "data/processed/rent"); how.append("detail")
+        rows["detail"] = to_parquet(csv_path, c, "data/processed/rent", yymm); how.append("detail")
     n_ok = max([r[0] for r in rows.values()], default=None)
     n_bad = max([r[1] for r in rows.values()], default=None)
     return "+".join(how), n_ok, n_bad
