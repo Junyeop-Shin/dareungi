@@ -28,6 +28,10 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 PARTS = {"fail_tire": "타이어", "fail_chain": "체인", "fail_saddle": "안장", "fail_pedal": "페달", "total_faults": "전체"}
+# 화면에 같이 보여 주는 나머지 신고 유형(사람 결정 2026-10-10). 1C 과제(fc.PARTS)에는 없던 유형이라 따로 둔다:
+# 1C 숫자를 재현하는 확인(fc_ops_fit)은 PARTS로만 하고, 운영 예측·실적·화면은 ALL을 쓴다. 방법은 같다(최근 4주 신고율 × 대여량 예측)
+EXTRA = {"fail_terminal": "단말기", "fail_etc": "기타"}
+ALL = PARTS | EXTRA
 MODEL_FILE = ROOT / "output/models/expo_ops.json"
 SPEC_FILE = ROOT / "output/models/fc_ops_spec.json"
 CALIB_FILE = ROOT / "output/models/kma_calibration.json"
@@ -95,8 +99,9 @@ def levels(d, bad=None, no_service=None, until=None, window=28):
     out["expo_lvl7"] = r.rolling(7, min_periods=4).mean().shift(7)
     ok = (bad == 0) & (d.index >= LEVEL_FROM)
     den = d.rentals.where(ok).rolling(window, min_periods=window // 2).sum().shift(7)
-    for p in PARTS:
-        out["lvl_" + p] = d[p].where(ok).rolling(window, min_periods=window // 2).sum().shift(7) / den
+    for p in ALL:
+        if p in d:                                   # 단말기·기타 열이 없는 옛 표로 불러도 돌게
+            out["lvl_" + p] = d[p].where(ok).rolling(window, min_periods=window // 2).sum().shift(7) / den
     return out
 
 
@@ -203,12 +208,13 @@ def frame(lv, cal, origin, wx=None):
     return f
 
 
-DISTRICT_COLS = {"reports": "total_faults", "n_tire": "fail_tire", "n_chain": "fail_chain", "n_saddle": "fail_saddle", "n_pedal": "fail_pedal"}
+DISTRICT_COLS = {"reports": "total_faults", "n_tire": "fail_tire", "n_chain": "fail_chain", "n_saddle": "fail_saddle", "n_pedal": "fail_pedal",
+                 "n_terminal": "fail_terminal", "n_etc": "fail_etc"}
 
 
 def daily_from_district(df):
     """운영 DB daily_district(날짜 × 자치구)를 서울 전체 날짜별 표(rentals + PARTS 열)로"""
-    d = df.groupby("date")[["rentals"] + list(DISTRICT_COLS)].sum().rename(columns=DISTRICT_COLS)
+    d = df.groupby("date")[["rentals"] + [c for c in DISTRICT_COLS if c in df]].sum().rename(columns=DISTRICT_COLS)
     d.index = pd.to_datetime(d.index)
     return d.sort_index()
 
@@ -223,7 +229,7 @@ def master_flags():
 def s1(f, expo_hat):
     """부품별 7일 합계 = Σ(그날 신고율 × 그날 대여량 예측)"""
     e = np.asarray(expo_hat, dtype=float)
-    return {p: float((f["lvl_" + p].to_numpy() * e).sum()) for p in PARTS}
+    return {p: float((f["lvl_" + p].to_numpy() * e).sum()) for p in ALL if "lvl_" + p in f}
 
 
 class ExpoModel:

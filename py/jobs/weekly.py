@@ -4,7 +4,7 @@
      risk_*_final.txt)을 적용한다. 자전거마다 1,000km당 위험률(보정 배율 적용), 기대 신고 수(위험률 × 최근 4주 평균 km),
      다음 주 신고 확률(1 − e^−기대 신고 수)과 그 주 평균 대비 배수, 확률 기준 백분위와 등급(점검 권장 95% / 주의 80% / 보통 50%),
      다음 신고까지 예상 km·주, 위험을 높인 변수 3개의 이유 문구(SHAP. 1km당 위험을 설명하고, 주행량은 화면에 따로 보여 준다),
-     마지막 반납 대여소·자치구를 붙인다. 공단 화면은 이걸 다 쓰고, 시민 화면은 등급·이유만 쓴다.
+     마지막 반납 대여소·자치구를 붙인다. 관리자 앱(점검 대상·자전거 조회)이 쓴다.
      최근 4주 주행이 0인 자전거는 순위에서 빼고 등급을 '산정 제외'로 둔다.
   2. forecast_weekly: 부품별 이번 주(월 ~ 일) 신고 = 최근 4주 신고율 × 대여량 예측(py/fc_ops.py). 월요일이 아닌 날
      돌려도(따라잡기) 원점은 그 주 월요일이고, 월요일 아침까지의 자료·예보만 쓴다.
@@ -31,11 +31,12 @@ import pandas as pd
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 sys.path.append(str(Path(__file__).resolve().parents[1] / "risk"))   # risk_lgb.prep(위험 모형 입력 가공)
 import fc_ops   # noqa: E402
+import risk_track   # noqa: E402
 from common import ROOT, alert, connect, job_lock, log_run, table_exists   # noqa: E402
 from publish import build_status, publish   # noqa: E402
 from risk_lgb import prep   # noqa: E402
 
-PARTS = {"fail_tire": "타이어", "fail_chain": "체인", "fail_saddle": "안장", "fail_pedal": "페달", "total_faults": "전체"}
+PARTS = fc_ops.ALL          # 주간 예측을 내는 유형: 네 부품 + 전체 + 단말기·기타
 KIND = {"타이어": "fail_tire", "체인": "fail_chain", "안장": "fail_saddle", "페달": "fail_pedal"}
 
 
@@ -145,6 +146,15 @@ def run():
             if not table_exists(con, "panel_latest"):
                 raise RuntimeError("panel_latest 없음 — daily.py 먼저")
             wk, n, grades = score_risk(con)
+            risk_track.save_history(con)                 # 이번 주에 누구를 추천했는지 남기고
+            ev = risk_track.evaluate(con)                # 지난 추천이 그다음 주에 실제로 신고됐는지 채점한다(다음 주가 다 지난 주만)
+            note = risk_track.retrain_note(ev)
+            if note and today.weekday() == 0:            # 손으로 다시 돌릴 때마다 같은 알림이 가지 않게 월요일 정기 실행에서만
+                alert(note)
+            if len(ev):
+                e = ev.iloc[-1]
+                print(f"위험 모형 채점({e.wk:%Y-%m-%d} 주 점수 → 다음 주 신고): 전체 {e.base_rate:.1%}, 상위 1,000대 {e.hit_top1000:.1%}(무작위 대비 {e.lift_top1000:.1f}배), "
+                      f"점검 권장 목록 {e.hit_insp:.1%}({int(e.n_insp):,}대)")
             days, done, shown = forecast_weekly(con, monday)
             build_status(con)
             for t in ("bike_risk_latest", "forecast_weekly", "forecast_track", "data_status"):

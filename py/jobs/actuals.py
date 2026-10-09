@@ -21,6 +21,7 @@
       .venv/bin/python py/jobs/actuals.py track_hist   # 과거 주 예보판 한 번(data/interim/weather_forecast/kma_by_origin.parquet 필요)
       .venv/bin/python py/jobs/actuals.py        # 운영분 갱신과 스냅샷 표 생성. daily.py가 매일 부른다
 """
+import datetime as dt
 import sys
 from pathlib import Path
 
@@ -30,7 +31,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 import fc_ops   # noqa: E402
 from common import ROOT, alert, connect, job_lock, log_run, table_exists   # noqa: E402
 
-KINDS = {"타이어": "n_tire", "체인": "n_chain", "안장": "n_saddle", "페달": "n_pedal"}
+KINDS = {"타이어": "n_tire", "체인": "n_chain", "안장": "n_saddle", "페달": "n_pedal", "단말기": "n_terminal", "기타": "n_etc"}      # 고장신고 API의 유형 6가지 전부
 HIST_END = "2026-06-30"
 SWITCH_FROM = "2026-10-12"    # 두 판을 운영에서 비교하기 시작한 주. 교체 조건: 최근 12주 전체 MAE%가 달력판이 3%p 넘게 낮음
 SWITCH_WEEKS, SWITCH_GAP = 12, 3.0
@@ -93,7 +94,7 @@ def track_hist():
                 if len(wx) != 7:
                     continue
                 r = fc_ops.forecast(d, m, wx, models, spec, bad=bad, no_service=ns)
-                rows += [{"week": m.date(), "part": fc_ops.PARTS[p], "pred_kma": v} for p, v in r["kma"].items()]
+                rows += [{"week": m.date(), "part": fc_ops.ALL[p], "pred_kma": v} for p, v in r["kma"].items()]
             h = pd.DataFrame(rows)
             con.register("h_", h)
             con.execute("CREATE OR REPLACE TABLE fc_kma_hist AS SELECT * FROM h_")
@@ -120,7 +121,7 @@ def forecast_track(con, daily, weeks=60):
         last = full[(full.index >= m - pd.DateOffset(days=7)) & (full.index < m)]
         done = len(nxt) == 7 and nxt.index.max() <= d.index.max()
         cal = fc_ops.forecast(d, m, None, models, spec, bad=bad, no_service=ns)["cal"]
-        for p, part in fc_ops.PARTS.items():
+        for p, part in fc_ops.ALL.items():
             row = {"week": m.date(), "part": part, "pred_kma": None, "pred_cal": cal[p],
                    "naive": float(last[p].sum()), "actual": float(nxt[p].sum()) if done else None}
             i = issued[(pd.to_datetime(issued.week) == m) & (issued.part == part)] if len(issued) else issued
@@ -152,6 +153,19 @@ def compare(track):
     return c
 
 
+RETRAIN_WEEKS = 12            # 재학습 검토 조건(사람 결정 2026-10-10): 최근 12주 전체 신고 오차가 기준값(지난주와 같다고 가정)보다 크면 알린다
+
+
+def retrain_check(track):
+    """대여량 모형을 다시 맞출 때가 됐는지 본다. 반환: (조건 충족 여부, 예측 오차 %, 기준값 오차 %, 본 주 수). 12주가 안 차면 (False, …)
+    오차 = 주별 |예측 − 실제|의 평균 ÷ 실제의 평균(전체 신고). 예보판·달력판 교체 규칙(compare)과 같은 12주, 같은 정의를 쓴다"""
+    t = track[(track.part == "전체") & track.actual.notna() & track.pred.notna()].sort_values("week").tail(RETRAIN_WEEKS)
+    if len(t) < RETRAIN_WEEKS:
+        return False, None, None, len(t)
+    mp, mn = ((t[c] - t.actual).abs().mean() / t.actual.mean() * 100 for c in ("pred", "naive"))
+    return bool(mp > mn), float(mp), float(mn), len(t)
+
+
 def refresh():
     """운영분(daily_district_hist 다음 날 ~ 어제)을 다시 계산하고 스냅샷 표를 만든다."""
     with job_lock():
@@ -181,6 +195,12 @@ def refresh():
             daily = con.execute("SELECT * FROM daily_district").df()
             ft = forecast_track(con, daily)
             cmp_ = compare(ft)
+            hit, mp, mn, nw = retrain_check(ft)
+            if hit and dt.date.today().weekday() == 0:          # 새 주가 채워지는 월요일에만 알린다(매일 같은 알림이 반복되지 않게)
+                alert(f"대여량 모형 재학습 검토: 최근 {nw}주 전체 신고 오차가 예측 {mp:.1f}% · 기준값 {mn:.1f}%로 기준값보다 크다(docs/pipeline.md 재학습 기준)")
+            today = dt.date.today()
+            if today.month == 1 and today.day <= 7 and today.weekday() == 0:          # 조건에 안 걸려도 해마다 1월 첫 월요일에 한 번(사람 결정 2026-10-10)
+                alert(f"대여량 모형 정기 재학습 시기({today.year}년 1월): 새해 공휴일 표를 넣고 학습 끝을 지난해 말까지 늘려 다시 맞춘다(docs/pipeline.md 재학습 기준)")
             for name, df in (("forecast_track", ft), ("fc_compare", cmp_)):
                 con.register("x_", df)
                 con.execute(f"CREATE OR REPLACE TABLE {name} AS SELECT * FROM x_")
@@ -193,6 +213,9 @@ def refresh():
                   f"forecast_track {ft.week.nunique()}주, 공백 의심 {len(gaps)}일")
             if len(gaps):
                 print(gaps.to_string(index=False))
+        except Exception as e:          # daily.py가 끝난 뒤 따로 불리므로, 여기서 실패하면 daily는 '성공'으로 남는다. 직접 기록하고 알린다
+            log_run(con, "actuals", "fail", str(e)); alert(f"actuals 실패: {e}")
+            raise
         finally:
             con.close()
 

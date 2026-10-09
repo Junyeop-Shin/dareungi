@@ -23,7 +23,7 @@ scp data/db/ops.duckdb data/interim/station_master.csv data/interim/station_clus
 모형: `output/models/risk_spec.json`, `risk_*_final.txt`는 깃에 있다.
 
 ## 서비스
-- `dareungi-app-admin.service`(8501)·`dareungi-app-citizen.service`(8502): Streamlit 두 앱 상시 실행(로컬만). Caddy가 서로 다른 주소로 연결하고, 관리자 주소에는 basic_auth.
+- `dareungi-app-admin.service`(8501): Streamlit 관리자 앱 상시 실행(로컬만). Caddy가 HTTPS 주소로 연결하고 basic_auth를 건다. 시민 조회 앱은 2026-10-10에 없앴다(자전거 조회는 관리자 앱의 한 화면).
 - `dareungi-<job>.timer/.service`: cron 대신 systemd 타이머(맥북 cron과 같은 주기). `systemctl list-timers`로 확인.
 - Caddy: `deploy/Caddyfile`의 두 도메인과 관리자 비밀번호 해시(`caddy hash-password`)를 바꾼 뒤 `/etc/caddy/Caddyfile`로. 하위 경로보다 하위 도메인 두 개를 권장(Streamlit은 하위 경로 설정이 번거롭다).
 

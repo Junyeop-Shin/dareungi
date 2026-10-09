@@ -132,7 +132,7 @@ from prep import to_utf8, std_name, read_any, data_files, make_utf8_folder
 
 | 경로 | 내용 |
 |---|---|
-| `app/admin/`, `app/citizen/`, `app/common/` | 3B 대시보드: 관리자 앱(한눈에 보기·부품별 고장 신고 예상·점검 대상) 8501, 시민 조회 8502. `serving/*.parquet`만 읽는다. 테마는 `.streamlit/config.toml` |
+| `app/admin/`, `app/common/` | 3B 대시보드: 관리자 앱(한눈에 보기·유형별 고장 신고 예측·점검 대상·자전거 조회) 8501. 시민 조회 앱은 2026-10-10에 없앴다. `serving/*.parquet`만 읽는다. 테마는 `.streamlit/config.toml` |
 | `deploy/` | 서버 1대 배포(설치 스크립트, systemd 타이머, Caddy) |
 | `tests/` | `test_ops.py` 운영 파이프라인 회귀 시험(빈 응답·트랜잭션, 잠금, 재수집 시간대, 예보 문자열, 신고율 7일 컷), `smoke_app.py` 화면 예외 시험, `screens.py` 화면 캡처(→ `output/screens/`) |
 | `notebooks/` | `00_사전검증`, `1A_Build_master`, `1A_regime`, `1A_eda`, `1B_regression`, `1C_forecast`, `1C_test` |

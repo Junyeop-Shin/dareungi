@@ -5,7 +5,7 @@
 반쯤 쓰인 파일을 읽는 일이 없게 한다.
 
   bike_risk_latest  자전거별 위험 점수·등급·이유(weekly.py)     forecast_weekly  부품별 주간 예측(weekly.py)
-  bike_card         시민 조회용 집계(daily.py)                  alerts_live      헛대여 경보(detect_sham.py)
+  bike_card         자전거 조회용 집계(daily.py)                alerts_live      헛대여 경보(detect_sham.py)
   weekly_actual     주 × 자치구 대여·신고(actuals.py)           daily_reports    일 × 자치구 × 부품 신고(actuals.py)
   forecast_track    주별 예측·실제·나이브(actuals.py)           reported_recent  최근 7일 고장 신고된 자전거(daily.py)
   data_status       데이터별 최신 시각(화면의 '기준 시각')
@@ -13,6 +13,7 @@
 
 실행: .venv/bin/python py/jobs/publish.py   # daily.py·weekly.py 끝에서도 부른다. 자주 바뀌는 4개는 hourly.py가 매시 발행한다
 """
+import json
 import os
 import sys
 from pathlib import Path
@@ -20,7 +21,7 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
-from common import ROOT, connect, job_lock, log_run, table_exists   # noqa: E402
+from common import ROOT, alert, connect, job_lock, log_run, table_exists   # noqa: E402
 
 SERVING = ROOT / "serving"
 SNAPSHOTS = ["bike_risk_latest", "bike_card", "forecast_weekly", "forecast_track", "alerts_live", "weekly_actual", "daily_reports", "reported_recent", "data_status"]
@@ -42,16 +43,18 @@ def publish_accuracy():
 
     입력: output/tables/fc_ops_replay_valid.csv(2024 검증: S1_kma, B1 나이브. 2023년까지로 맞춘 모형. py/forecast/fc_ops_fit.py)
           output/tables/fc_ops_compare_live.csv(2026-07-06 주부터 실제 결과가 나온 주: 예보판, 나이브. py/forecast/fc_ops_compare.py)
-    출력: serving/forecast_accuracy.parquet(period 기간 이름, pred 이 예상, naive 단순 짐작). 표가 없으면 그 줄은 뺀다."""
+    출력: serving/forecast_accuracy.parquet(period 확인한 기간, train 그 숫자를 낸 모형의 학습 기간, pred 이 예상, naive 단순 짐작). 표가 없으면 그 줄은 뺀다.
+    학습 기간: 2024 검증은 2023년까지로 맞춘 모형(fc.TRAIN_DAYS), 2026-07 이후는 운영 모형(fc_ops_spec.json의 train)."""
     tab, rows = ROOT / "output/tables", []
     if (tab / "fc_ops_replay_valid.csv").exists():
         v = pd.read_csv(tab / "fc_ops_replay_valid.csv", index_col=0)["전체"]
-        rows.append({"period": "2024년 (2023년까지로 학습한 모형)", "pred": v["S1_kma"], "naive": v["B1 나이브"]})
+        rows.append({"period": "2024년 1 ~ 12월", "train": "2021-04 ~ 2023-12", "pred": v["S1_kma"], "naive": v["B1 나이브"]})
     if (tab / "fc_ops_compare_live.csv").exists():
         c = pd.read_csv(tab / "fc_ops_compare_live.csv", index_col=0)
         n = int(c["주 수"].iloc[0])
         a = pd.Timestamp(LIVE_FROM); b = a + pd.Timedelta(days=7 * n - 1)
-        rows.append({"period": f"{a.year}년 {a.month}/{a.day} ~ {b.month}/{b.day} (최근 {n}주)", "pred": c.loc["예보판", "전체"], "naive": c.loc["나이브(지난주 그대로)", "전체"]})
+        tr = json.load(open(ROOT / "output/models/fc_ops_spec.json"))["train"]
+        rows.append({"period": f"{a.year}년 {a.month}/{a.day} ~ {b.month}/{b.day} ({n}주)", "train": f"{tr[0][:7]} ~ {tr[1][:7]}", "pred": c.loc["예보판", "전체"], "naive": c.loc["나이브(지난주 그대로)", "전체"]})
     if rows:
         SERVING.mkdir(exist_ok=True)
         tmp = SERVING / "forecast_accuracy.parquet.tmp"
@@ -92,6 +95,9 @@ def run(names=None):
                 done.append("forecast_accuracy")
             log_run(con, "publish", "ok", ",".join(done))
             print("publish:", done)
+        except Exception as e:          # 발행이 실패하면 화면은 옛 자료를 계속 보여 준다. 기록하고 알린다
+            log_run(con, "publish", "fail", str(e)); alert(f"publish 실패: {e}")
+            raise
         finally:
             con.close()
 

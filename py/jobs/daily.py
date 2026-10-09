@@ -6,7 +6,7 @@
   2. 주별 요약(bw_usage·bw_fail)은 이번 주와 지난주를 매일 다시 만든다. 그보다 앞선 주는 바뀌지 않는다.
   3. 패널(panel)을 주별 요약 전체로 다시 계산한다(2A-9와 같은 SQL, py/panel_sql.py). panel_latest는 가장 최근 완결 주.
   4. 데이터 품질 점검(3A-7): 시간대별 대여가 지난주 같은 시간의 30% 미만, 작업 실패, 26시간 넘게 안 돈 작업.
-  5. bike_card(시민 조회용, 런북 08)와 reported_recent를 만들어 스냅샷으로 발행한다.
+  5. bike_card(자전거 조회 화면용 집계, 런북 08)와 reported_recent를 만들어 스냅샷으로 발행한다.
   6. actuals.refresh()로 weekly_actual, daily_reports, forecast_track을 갱신해 발행한다.
 
 주의: init_ops.py로 과거 주별 요약을 넣어 둬야 '마지막 신고 이후 누적'이 끊기지 않는다.
@@ -104,6 +104,32 @@ def rebuild_panel(con, today):
     return con.execute("SELECT max(wk), count(*) FROM panel_latest").fetchone()
 
 
+KNOWN_KINDS = ("타이어", "체인", "안장", "페달", "단말기", "기타")          # 고장신고 API의 유형. 집계(actuals.KINDS)와 주간 예측이 이 여섯 가지를 전제로 한다
+
+
+def data_checks(con):
+    """건수가 아니라 내용이 달라졌는지 본다(건수 점검은 quality_checks). 반환: [(점검 이름, 내용)]
+
+    1. 새 신고 유형: 최근 7일 신고에 KNOWN_KINDS 밖의 유형이 있다 → 집계·예측에서 조용히 빠지므로 바로 알아야 한다
+    2. 읽지 못한 신고: 자전거 번호나 시각을 못 읽은 행이 최근 7일의 1%를 넘는다 → API 형식이 바뀌었을 가능성
+    3. 이상한 대여 기록: 최근 2일에 반납이 대여보다 이르거나, 이용 시간이 음수이거나, 대여 시각이 미래인 행이 있다"""
+    issues = []
+    if table_exists(con, "raw_fail"):
+        new = con.sql(f"""SELECT kind, count(*) AS n FROM fail_live WHERE reg_date >= current_date - 7 AND kind IS NOT NULL
+                          AND kind NOT IN {KNOWN_KINDS} GROUP BY 1 ORDER BY 2 DESC""").fetchall()
+        if new:
+            issues.append(("새 신고 유형", ", ".join(f"{k} {n}행" for k, n in new)))
+        bad, tot = con.sql("SELECT sum((bike_id IS NULL OR reg_ts IS NULL)::INT), count(*) FROM fail_live WHERE reg_date >= current_date - 7 OR reg_date IS NULL").fetchone()
+        if tot and (bad or 0) / tot > 0.01:
+            issues.append(("읽지 못한 신고", f"최근 7일 {tot}행 중 {bad}행의 번호·시각을 읽지 못함"))
+    if table_exists(con, "raw_rent"):
+        odd = con.sql("""SELECT sum((rtn_dt < rent_dt)::INT), sum((use_min < 0)::INT), sum((rent_dt > now() + INTERVAL 1 HOUR)::INT)
+                         FROM trips_live WHERE rent_dt >= now() - INTERVAL 2 DAY""").fetchone()
+        if any(odd):
+            issues.append(("이상한 대여 기록", f"반납이 대여보다 이름 {odd[0] or 0}행, 이용 시간 음수 {odd[1] or 0}행, 미래 시각 {odd[2] or 0}행"))
+    return issues
+
+
 def quality_checks(con):
     con.execute("CREATE TABLE IF NOT EXISTS quality_log (ts TIMESTAMP, check_name VARCHAR, detail VARCHAR)")
     issues = []
@@ -120,6 +146,7 @@ def quality_checks(con):
                            OR (job = 'weekly' AND max(ts) < now() - INTERVAL 8 DAY)""").df()
     if len(stale):
         issues.append(("안 도는 작업", ", ".join(f"{r.job}(마지막 {r.last_ok:%m-%d %H:%M})" for r in stale.itertuples())))
+    issues += data_checks(con)
     for name, detail in issues:
         con.execute("INSERT INTO quality_log VALUES (now(), ?, ?)", [name, detail])
         alert(f"{name}: {detail}")

@@ -13,6 +13,7 @@ py/jobs/*.py 수집·갱신 작업이 같이 쓰는 것들: 운영 DB 연결, �
 import datetime as dt
 import os
 import re
+import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -74,6 +75,7 @@ def job_lock(wait_s=2, tries=150):
         finally:
             LOCK.unlink(missing_ok=True)
         return
+    alert("DB 잠금을 5분 동안 얻지 못해 작업을 건너뛴다(다른 작업이 오래 돌고 있음)")          # 작업의 try 밖에서 나는 예외라 여기서 알린다
     raise RuntimeError("DB 잠금을 얻지 못했다(다른 작업이 오래 돌고 있음)")
 
 
@@ -122,15 +124,23 @@ def mask_keys(text):
 
 
 def alert(msg):
-    """콘솔에 찍고, ALERT_WEBHOOK(디스코드·슬랙)이 설정돼 있으면 거기에도 보낸다."""
+    """콘솔에 찍고, ALERT_WEBHOOK(디스코드·슬랙)이 설정돼 있으면 거기에도 보낸다. 반환: 밖으로 나갔으면 True.
+
+    웹훅이 없으면 로그에만 남는다(맥북 cron이면 아무도 못 본다). 보내다 실패하면 그 사실을 로그에 적는다(전에는 조용히 넘어갔다).
+    본문 이름이 서비스마다 다르다: 슬랙(hooks.slack.com)은 text, 디스코드는 content. 연결 확인: .venv/bin/python py/common.py alert-test"""
     msg = mask_keys(msg)
     hook = os.environ.get("ALERT_WEBHOOK")
     print(f"[ALERT] {dt.datetime.now():%Y-%m-%d %H:%M} {msg}", flush=True)
-    if hook:
-        try:
-            requests.post(hook, json={"content": msg}, timeout=10)
-        except Exception:
-            pass
+    if not hook:
+        return False
+    try:
+        r = requests.post(hook, json={"text": msg} if "hooks.slack.com" in hook else {"content": msg}, timeout=10)
+        if r.status_code >= 300:
+            print(f"[ALERT] 웹훅 전송 실패: HTTP {r.status_code}", flush=True)
+        return r.status_code < 300
+    except Exception as e:
+        print(f"[ALERT] 웹훅 전송 실패: {type(e).__name__}", flush=True)
+        return False
 
 
 def log_run(con, job, status, detail=""):
@@ -165,3 +175,14 @@ def upsert_rows(con, table, df, delete_where=None, params=()):
     finally:
         con.unregister("df_")
     return len(df)
+
+
+if __name__ == "__main__":
+    # 경보가 실제로 사람에게 닿는지 확인한다: .venv/bin/python py/common.py alert-test
+    # 주소(인증 정보)는 찍지 않고 설정 여부와 전송 결과만 알려 준다
+    if sys.argv[1:] == ["alert-test"]:
+        if not os.environ.get("ALERT_WEBHOOK"):
+            print("ALERT_WEBHOOK이 .env에 없습니다. 지금은 경보가 로그 파일에만 남습니다.")
+        else:
+            print("전송 성공: 채널에 시험 알림이 왔는지 확인하세요." if alert("시험 알림입니다(py/common.py alert-test). 이 글이 보이면 연결된 것입니다.")
+                  else "전송 실패: 웹훅 주소를 확인하세요.")

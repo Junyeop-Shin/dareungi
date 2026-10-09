@@ -1,17 +1,19 @@
 # 대시보드 테마 — 라이트·다크 둘 다 등록해 오른쪽 위 메뉴(⋮ → Settings)에서 고를 수 있게 한다(2026-10-08 사람 요청).
 # 다크는 사람이 준 시안 색. 화면 쪽 색(카드·타일·배지·그래프)은 app/common/theme.py가 st.context.theme.type을 보고 맞춘다.
 [theme]
-baseRadius = "0.75rem"
+baseRadius = "0.5rem"
 
 [theme.light]
-# 고른 버튼·링크의 글자색으로도 쓰이므로 밝은 바탕에서 대비 4.5:1이 나오는 파랑(#2F6FDE는 3.9:1이었다)
-primaryColor = "#1F4FB5"
+# 강조색은 그래프와 같은 초록 계열 하나로(사람 결정 2026-10-10). 고른 버튼·링크의 글자색으로도 쓰이므로 밝은 바탕에서 대비 4.5:1이 넘는 진한 초록
+primaryColor = "#12604A"
+dataframeHeaderBackgroundColor = "#ECEEEC"
 backgroundColor = "#F5F6F5"
 secondaryBackgroundColor = "#FFFFFF"
 textColor = "#1F2328"
 
 [theme.dark]
-primaryColor = "#5B9BF0"
+primaryColor = "#3CC08A"
+dataframeHeaderBackgroundColor = "#242424"
 backgroundColor = "#141414"
 secondaryBackgroundColor = "#1E1E1E"
 textColor = "#ECECEC"

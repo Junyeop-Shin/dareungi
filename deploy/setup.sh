@@ -21,8 +21,8 @@ if ! command -v caddy >/dev/null; then
 fi
 sudo cp deploy/Caddyfile /etc/caddy/Caddyfile && sudo systemctl restart caddy
 
-# Streamlit 상시 실행: 관리자 앱(8501) + 시민 조회 앱(8502). 08a 설계서 1절 — 두 앱은 다른 주소로 연다
-for app in admin:app/admin/Home.py:8501 citizen:app/citizen/app.py:8502; do
+# Streamlit 상시 실행: 관리자 앱(8501) 하나. 시민 조회 앱은 2026-10-10에 없앴다(자전거 조회는 관리자 앱의 한 화면)
+for app in admin:app/admin/Home.py:8501; do
   IFS=':' read -r name path port <<<"$app"
   sudo tee /etc/systemd/system/dareungi-app-$name.service >/dev/null <<EOF
 [Unit]
@@ -75,6 +75,6 @@ WantedBy=timers.target
 EOF
 done
 sudo systemctl daemon-reload
-sudo systemctl enable --now dareungi-app-admin.service dareungi-app-citizen.service
+sudo systemctl enable --now dareungi-app-admin.service
 for name in "${!JOBS[@]}"; do sudo systemctl enable --now dareungi-$name.timer; done
 echo "설치 끝. .env를 만들고 'systemctl list-timers | grep dareungi'로 확인하세요."

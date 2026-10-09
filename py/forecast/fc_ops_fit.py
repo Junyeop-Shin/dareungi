@@ -60,7 +60,7 @@ def replay(m, models, spec):
     v = base[(base.split == "valid") & base.clean]
     kma = pd.read_parquet(fc.ROOT / "data/interim/weather_forecast/kma_by_origin.parquet")
     d = m.set_index("date")
-    rows = []
+    rows, ex = [], []
     # 1C 방식(달력판): 날씨 시나리오 A 표에 날씨 없는 모형. 독립된 계산 경로로 fc_ops와 비교한다
     oi = np.sort(v.i.unique())
     F = fc.future_frame(m, oi, "A")
@@ -77,6 +77,9 @@ def replay(m, models, spec):
         r = fc_ops.forecast(d, o, wx, models, spec, bad=d.bad, no_service=d.no_service)
         for p in fc_ops.PARTS:
             rows += [{"origin": o, "part": p, "model": "S1_" + k, "pred": r[k][p]} for k in ("kma", "cal")]
+        for p in fc_ops.EXTRA:          # 단말기·기타: 1C 과제에 없던 유형. 실제값(원점부터 7일 합)과 기준값(직전 7일 합)을 마스터에서 직접 만든다
+            ex.append({"origin": o, "part": p, "y": float(d[p].loc[o:o + pd.Timedelta(days=6)].sum()),
+                       "B1 나이브": float(d[p].loc[o - pd.Timedelta(days=7):o - pd.Timedelta(days=1)].sum()), "S1_kma": r["kma"][p], "S1_cal": r["cal"][p]})
     preds = pd.DataFrame(rows)
     s = fc.score(preds, base)
     s = s[s.split == "valid"]
@@ -89,6 +92,14 @@ def replay(m, models, spec):
     pv["r"] = (pv.y - pv.pred) / pv.pred
     q = pv.groupby(["model", "part"]).r.quantile([0.1, 0.9]).unstack()
     intervals = {k: {fc_ops.PARTS[p]: [float(q.loc[("S1_" + k, p), 0.1]), float(q.loc[("S1_" + k, p), 0.9])] for p in fc_ops.PARTS} for k in ("kma", "cal")}
+    # 단말기·기타의 오차와 80% 구간도 같은 원점·같은 정의(MAE ÷ 실제 평균, 상대오차 10% · 90% 분위)로 붙인다
+    for p, g in pd.DataFrame(ex).groupby("part"):
+        name = fc_ops.EXTRA[p]
+        for mdl in ("B1 나이브", "S1_cal", "S1_kma"):
+            tab.loc[mdl, name] = round(100 * (g[mdl] - g.y).abs().mean() / g.y.mean(), 2)
+        for k in ("kma", "cal"):
+            rr = (g.y - g["S1_" + k]) / g["S1_" + k]
+            intervals[k][name] = [float(rr.quantile(0.1)), float(rr.quantile(0.9))]
     return tab, intervals
 
 
@@ -100,7 +111,8 @@ def main():
     tab, intervals = replay(m, fit_models(m, fc.TRAIN_DAYS[1]), spec)
     tab.to_csv(fc.ROOT / "output/tables/fc_ops_replay_valid.csv")
     print("2024 검증 구간 MAE%(원점 360개):"); print(tab.to_string())
-    diff = (tab.loc["S1_kma"] - tab.loc["1C S1_B(노트북)"]).abs().max(), (tab.loc["S1_cal"] - tab.loc["1C 방식 달력판"]).abs().max()
+    core = list(fc_ops.PARTS.values())          # 1C와 대조하는 것은 1C에 있던 유형만
+    diff = (tab.loc["S1_kma", core] - tab.loc["1C S1_B(노트북)", core]).abs().max(), (tab.loc["S1_cal", core] - tab.loc["1C 방식 달력판", core]).abs().max()
     print(f"1C 숫자와의 최대 차이: 예보판 {diff[0]:.3f}%p, 달력판 {diff[1]:.3f}%p")
     if max(diff) > 0.005:
         raise SystemExit("1C 숫자가 재현되지 않는다 — 저장하지 않는다")
@@ -117,7 +129,7 @@ def main():
     spec.update({
         "train": [fc.TRAIN_DAYS[0], TEST_REFIT_END], "fitted": str(dt.date.today()),
         "intervals_80": intervals, "interval_source": "2024 검증 구간 상대오차 10% · 90% 분위(2023년까지로 맞춘 모형)",
-        "replay_valid_maepct": {i: {c: float(v) for c, v in r.items()} for i, r in tab.iterrows()},
+        "replay_valid_maepct": {i: {c: float(v) for c, v in r.items() if v == v} for i, r in tab.iterrows()},
         "shown": "kma", "fallback": "cal",
         "switch_rule": "2026-10-12 이후 운영 주로 12주 누적 MAE%를 비교해 달력판이 예보판보다 3%p 넘게 낮으면 교체를 검토한다",
     })
