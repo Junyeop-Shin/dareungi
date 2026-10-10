@@ -34,7 +34,9 @@ def connect(path="data/db/ops.duckdb"):
     p = ROOT / path
     p.parent.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(str(p))
-    con.execute("SET memory_limit = '4GB'")
+    # DuckDB가 쓸 메모리 상한. 넘치는 몫은 디스크 임시 파일로 내린다. 서버 메모리보다 크게 두면 운영체제가 작업을 죽인다
+    # (4GB 서버에서 상한 4GB로 daily가 죽었다, 2026-10-10). 작은 서버는 .env에 OPS_DUCKDB_MEMORY=2GB처럼 적는다.
+    con.execute(f"SET memory_limit = '{os.environ.get('OPS_DUCKDB_MEMORY', '4GB')}'")
     return con
 
 

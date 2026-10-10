@@ -12,7 +12,7 @@
 
 1. **자기소개서** — 재료: `docs/report_stage1.md`, `docs/notes/04_레짐원인_메모.md`, `docs/notes/06_위험모형_메모.md`
 2. **배포** — 2026-10-10에 AWS Lightsail 서울(Ubuntu 24.04 · 4GB, 월 24달러)에 올렸다. 주소는 **https://ttareungi-care.duckdns.org** (DuckDNS, 비밀번호 없이 공개). 순서와 겪은 문제는 `deploy/README.md`. 남은 것: 서버가 정상으로 도는 것을 확인한 뒤 맥북 `crontab -r`, 과금 확인(Billing → Credits). 안 쓸 때는 인스턴스와 고정 IP를 삭제해야 과금이 멈춘다
-3. **보고서 요약·다듬기** — `docs/report_stage1.md`(초안). 단계 2·레짐 원인 결과는 3절·부록에 일부만 들어가 있다. 2026-10-09 ~ 10에 생긴 재료: 유형 7칸 예측과 구간 적중(`forecast_track`), 도입 효과 시나리오(`output/tables/impact_scenario.csv`), 운영 감시와 재학습 기준(`docs/pipeline.md`)
+3. **보고서 요약·다듬기** — `docs/report_stage1.md`(초안). 쓸 때 옆에 펴 놓고 볼 정리 문서: `docs/project_guide.html`(브라우저로 연다. 보고서 목차 순서로 프로젝트 전체를 정리했고, 숫자마다 출처 표를 붙였다. 18절에 문서와 표가 달랐던 곳의 목록이 있어 옛 문서의 문장을 그대로 옮기면 안 되는 곳을 알 수 있다). 단계 2·레짐 원인 결과는 3절·부록에 일부만 들어가 있다. 2026-10-09 ~ 10에 생긴 재료: 유형 7칸 예측과 구간 적중(`forecast_track`), 도입 효과 시나리오(`output/tables/impact_scenario.csv`), 운영 감시와 재학습 기준(`docs/pipeline.md`)
 4. **서울시 제안(3C)** — `docs/proposal/proposal_draft.md`. 제안 대상·시점, 외부 보도 숫자 재확인, 2분 데모 영상, 정보공개청구(`docs/reference/10` 4절)
 5. **사용성 테스트(3B-6)** — 관리자 역할 2 ~ 3명(시민 조회 앱을 없애 시민 역할은 뺀다. 런북 08의 계획은 고치지 않았다). 결과는 `docs/usability_test.md`
 6. **2028년 공휴일** — 2027년은 받아 둠(`py/build/holidays.py 2027`). 2027년 여름 이후 `py/build/holidays.py 2028`
@@ -38,6 +38,7 @@
 
 | 단계 | 결과 | 어디에 |
 |---|---|---|
+| README·프로젝트 정리 문서(2026-10-10, 커밋 전) | README를 처음 보는 사람 기준으로 다시 씀(결과와 비교 기준, 한계, 화면 캡처). 보고서를 쓸 때 참고할 정리 문서를 만듦(18개 절, 숫자를 출처 표와 대조) | `README.md`, `docs/img/`, `docs/project_guide.html` |
 | 코드 검토 반영(2026-10-10, 커밋 전) | 신고 뷰가 깨진 날짜 한 줄에 죽지 않게, 주간 점수는 지난주 패널일 때만, 적재를 다시 실행해도 중복 없게, 잠금을 flock으로, 따로 돌던 06:10 신고 수집 삭제(crontab은 사람이 지움), `24_od.py` 추가 | `docs/decision_log.md` 2026-10-10 마지막 줄, `docs/handoff_2026-10-09.md` |
 | 0 사전검증 | 자전거번호 매칭률 99.87%, API 시차 0 ~ 1일 | `docs/phase0_result.md` |
 | 1A 마스터·EDA | 3,834일 × 75열, 신고율 레짐 확인, 노출 = 대여건수 | `docs/notes/01·02`, `notebooks/1A_*` |

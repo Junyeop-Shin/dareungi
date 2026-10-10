@@ -19,6 +19,7 @@ ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519 && cat ~/.ssh/id_ed25519.pub   
 git clone git@github.com:Junyeop-Shin/dareungi.git ~/dareungi
 cd ~/dareungi && bash deploy/setup.sh       # 파이썬 venv·패키지(약 10분, torch가 크다)·Caddy·systemd. 타이머는 등록만 하고 켜지 않는다
 nano .env                                   # SEOUL_API_KEY=..., DATA_GO_KR_KEY=..., ALERT_WEBHOOK=...
+                                            # 메모리 4GB 서버는 OPS_DUCKDB_MEMORY=2GB 도 넣는다(안 넣으면 daily가 메모리 부족으로 죽는다)
 ```
 
 **2. 맥북에서: 깃에 없는 자료 옮기기.** 운영 DB는 **그냥 복사하면 안 된다.** 예약 작업이 쓰는 중에 복사하면 깨진 파일이 간다(실제로 겪었다: 서버에서 `Failed to load metadata pointer`). 잠근 채로 사본을 만들어 그 사본을 보낸다.

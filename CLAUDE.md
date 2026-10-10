@@ -116,6 +116,7 @@ from prep import to_utf8, std_name, read_any, data_files, make_utf8_folder
 | `docs/pipeline.md`, `docs/panel_dictionary.md`, `docs/load_log.csv` | 운영 파이프라인 작업표·스케줄·복구·재학습 기준·Streamlit 의존 목록, 패널 변수 사전, 대여이력 적재 기록 |
 | `docs/handoff_2026-10-09.md` | 2026-10-09 ~ 10 화면·운영 작업의 항목별 기록(무엇을 왜 바꿨는지) |
 | `docs/phase0_result.md`, `docs/schema_map.csv` | 단계 0 결과, 열 이름 대응표 |
+| `docs/project_guide.html`, `docs/img/` | 보고서를 쓸 때 참고하는 프로젝트 전체 정리(브라우저로 연다. 2026-10-10 기준이고 그 뒤 바뀐 내용은 반영되지 않는다. 18절에 문서와 표가 달랐던 곳 목록), README에 넣은 화면 캡처 |
 | `docs/reference/01~10`, `04b`, `08a` | 1차 분석 검토·조사 자료, 레짐 원인 분석 계획(04b), 대시보드 화면 설계(08a, 08 문서와 다르면 이것을 따른다) |
 
 **코드 (`py/`)** — 바로 아래는 다른 코드·노트북이 불러 쓰는 공용 모듈, 하위 폴더는 직접 실행하는 단계별 스크립트
