@@ -39,7 +39,7 @@ scp data/interim/weather_forecast/kma_by_origin.parquet <서버>:~/dareungi/data
 ```
 분석 DB(22GB)는 옮기지 않는다. 모형(`output/models/`)과 마스터·공휴일 표는 깃에 있다.
 
-**3. 서버에서: 주소** (지금 주소: `https://ttareungi-care.duckdns.org`, DuckDNS 무료 서브도메인을 고정 IP에 연결. 누구나 볼 수 있게 열어 둠)
+**3. 서버에서: 주소** (DuckDNS 무료 서브도메인을 고정 IP에 연결. 지금 주소는 루트 `README.md`. 누구나 볼 수 있게 열어 둠)
 ```bash
 sudo cp ~/dareungi/deploy/Caddyfile /etc/caddy/Caddyfile
 sudo nano /etc/caddy/Caddyfile              # 주소가 다르면 내 것으로. 잠그려면 basicauth 블록의 #을 지우고 'caddy hash-password'의 해시를 넣는다

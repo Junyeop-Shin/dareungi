@@ -11,7 +11,7 @@
 ## 남은 일 (순서대로)
 
 1. **자기소개서** — 재료: `docs/report_stage1.md`, `docs/notes/04_레짐원인_메모.md`, `docs/notes/06_위험모형_메모.md`
-2. **배포** — 2026-10-10에 AWS Lightsail 서울(Ubuntu 24.04 · 4GB, 월 24달러)에 올렸다. 주소는 **https://ttareungi-care.duckdns.org** (DuckDNS, 비밀번호 없이 공개). 순서와 겪은 문제는 `deploy/README.md`. 서버 확인(2026-10-10): 매시 수집·경보·갱신과 날씨 관측은 예약대로 돈다. 매일 작업은 DB 메모리 상한(4GB)이 서버 메모리보다 커서 한 번 죽었고, `.env`의 `OPS_DUCKDB_MEMORY=2GB`와 스왑 4GB로 고친 뒤 예약 방식으로 성공을 확인했다. 맥북 `crontab -r`도 했다. 남은 것: 2026-10-12(월) 07:30 주간 작업이 서버에서 처음 도는지 확인(`tail -n 12 logs/weekly.log`), 과금 확인(Billing → Credits). 안 쓸 때는 인스턴스와 고정 IP를 삭제해야 과금이 멈춘다
+2. **배포** — 2026-10-10에 AWS Lightsail 서울(Ubuntu 24.04 · 4GB, 월 24달러)에 올렸다. 주소는 `README.md` (DuckDNS, 비밀번호 없이 공개). 순서와 겪은 문제는 `deploy/README.md`. 서버 확인(2026-10-10): 매시 수집·경보·갱신과 날씨 관측은 예약대로 돈다. 매일 작업은 DB 메모리 상한(4GB)이 서버 메모리보다 커서 한 번 죽었고, `.env`의 `OPS_DUCKDB_MEMORY=2GB`와 스왑 4GB로 고친 뒤 예약 방식으로 성공을 확인했다. 맥북 `crontab -r`도 했다. 남은 것: 2026-10-12(월) 07:30 주간 작업이 서버에서 처음 도는지 확인(`tail -n 12 logs/weekly.log`), 과금 확인(Billing → Credits). 안 쓸 때는 인스턴스와 고정 IP를 삭제해야 과금이 멈춘다
 3. **보고서 요약·다듬기** — `docs/report_stage1.md`(초안). 쓸 때 옆에 펴 놓고 볼 정리 문서: `docs/project_guide.html`(브라우저로 연다. 보고서 목차 순서로 프로젝트 전체를 정리했고, 숫자마다 출처 표를 붙였다. 18절에 문서와 표가 달랐던 곳의 목록이 있어 옛 문서의 문장을 그대로 옮기면 안 되는 곳을 알 수 있다). 단계 2·레짐 원인 결과는 3절·부록에 일부만 들어가 있다. 2026-10-09 ~ 10에 생긴 재료: 유형 7칸 예측과 구간 적중(`forecast_track`), 도입 효과 시나리오(`output/tables/impact_scenario.csv`), 운영 감시와 재학습 기준(`docs/pipeline.md`)
 4. **서울시 제안(3C)** — `docs/proposal/proposal_draft.md`. 제안 대상·시점, 외부 보도 숫자 재확인, 2분 데모 영상, 정보공개청구(`docs/reference/10` 4절)
 5. **사용성 테스트(3B-6)** — 관리자 역할 2 ~ 3명(시민 조회 앱을 없애 시민 역할은 뺀다. 런북 08의 계획은 고치지 않았다). 결과는 `docs/usability_test.md`
