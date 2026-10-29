@@ -3,7 +3,7 @@
 지역은 다른 화면과 같은 머리 영역 선택기(서울 전체 / 강북 / 강남 + 구 선택)로 고른다.
 목록 셋을 한꺼번에 펼치면 화면이 길고 글자가 많아, 위쪽 버튼(목록 이름 + 대수)으로 하나씩만 본다(2026-10-09 UX 검토).
   최근 REPORT_DAYS일 고장 신고 자전거: 신고 후 대여 기록으로 수리 대기 / 미조치 의심 / 재배치 후 운행을 추정한다 + 위치 지도
-  점검 권장(미신고): 최근 신고가 없는 자전거 중 다음 주 고장 신고 가능성 순위 상위 + 위치 지도
+  점검 권장(미신고): 그 주에 대여됐고 최근 신고가 없는 자전거 중 정비 필요 가능성 순위 상위 + 위치 지도(2026-10-23부터)
   대여 직후 반납이 반복된 자전거: 신고는 안 됐지만 지금 고장일 가능성이 높다 + 위치 지도
 지도는 그 목록의 자전거가 최근 반납된 대여소를 원으로, 자치구 경계선과 한글 구 이름을 함께 그린다.
 원을 누르거나 옆 표에서 대여소를 고르면 지도가 그 대여소로 확대되어 그 대여소만 남고, 아래에 그 대여소의 자전거 목록이 나온다
@@ -202,10 +202,10 @@ with st.container(border=True):
     else:
         n_caution = int((risk_un.grade == "주의").sum())
         ui.card_title("점검 권장 자전거 (미신고)",
-                      sub=f"점검 권장 {len(insp):,}대 · 주의 {n_caution:,}대 · {texts.week_range(risk.wk.max())} 주까지의 기록으로 매긴 다음 주 고장 신고 가능성 순위",
+                      sub=f"점검 권장 {len(insp):,}대 · 주의 {n_caution:,}대 · {texts.week_range(risk.wk.max())} 주까지의 기록으로 매긴 정비 필요 가능성 순위",
                       help=texts.GRADE_HELP + f" 최근 {texts.REPORT_DAYS}일 안에 신고된 자전거는 이 목록에 넣지 않습니다.")
         top = st.segmented_control("표시 대수", [50, 200, 1000], default=200, format_func=lambda x: f"상위 {x:,}대", label_visibility="collapsed")
-        # 순위는 부품을 가리지 않은 종합 신고 가능성(risk_ratio) 순. 부품·등급 선택은 뺐고(사람 결정 2026-10-10) 점검 권장·주의만 보여 준다
+        # 순위는 정비 필요 가능성(risk_ratio, 신고 없이 손볼 자전거 모형) 순. 부품·등급 선택은 뺐고(사람 결정 2026-10-10) 점검 권장·주의만 보여 준다
         v = risk_un[risk_un.grade.isin(texts.GRADE_ORDER[:2])].sort_values("risk_ratio", ascending=False).head(top or 200).copy()
         v["자전거번호"] = ui.bike_links(v.bike_id)
         v["등급"] = v.grade.map(texts.grade_name)
@@ -216,12 +216,12 @@ with st.container(border=True):
         pr = v[["ratio_tire", "ratio_chain", "ratio_saddle", "ratio_pedal"]].set_axis(texts.PARTS, axis=1).fillna(0)
         v["부품"] = pr.idxmax(axis=1).where(pr.max(axis=1) > 0, "—")          # 이름만. 배수는 체인 신고가 더 흔하던 학습 기간 기준이라 크기를 믿기 어렵다
         st.dataframe(v[["자전거번호", "등급", "risk_ratio", "부품", "주행", "사유", "대여소", "district"]], hide_index=True, width="stretch", height=430, column_config={"자전거번호": ui.BIKE_COL,
-            "risk_ratio": st.column_config.NumberColumn("신고 가능성 (평균 대비)", format="%.1f배", width="medium", help=texts.SCORE_HELP),
+            "risk_ratio": st.column_config.NumberColumn("정비 필요 가능성 (평균 대비)", format="%.1f배", width="medium", help=texts.SCORE_HELP),
             "부품": st.column_config.TextColumn("의심 고장 부품", help="네 부품(타이어·체인·안장·페달) 가운데 신고 가능성이 그 부품의 전체 평균과 비교해 가장 높은 부품입니다."),
             "주행": st.column_config.NumberColumn("주간 주행거리", format="%d km", width="small", help="최근 4주 평균"),
             "사유": st.column_config.TextColumn("선정 사유", width="large"),
             "대여소": "최근 반납 대여소", "district": "자치구"})
-        download(v, {"등급": "등급", "risk_ratio": "신고 가능성(평균 대비 배)", "부품": "의심 고장 부품", "주행": "주간 주행거리(km)", "사유": "선정 사유",
+        download(v, {"등급": "등급", "risk_ratio": "정비 필요 가능성(평균 대비 배)", "부품": "의심 고장 부품", "주행": "주간 주행거리(km)", "사유": "선정 사유",
                      "대여소": "최근 반납 대여소", "district": "자치구", "last_rtn_dt": "최근 반납 시각"}, "점검권장", "dl_risk")
         station_map(insp, "risk", "점검 권장 자전거 위치", f"점검 권장 {len(insp):,}대 전체")
 ui.footer()

@@ -55,7 +55,7 @@ if wk is not None and len(wk):
 kpis.append(rate_kpi)
 if risk_f is not None and len(risk_f):
     kpis.append(dict(label="점검 권장 자전거", value=f"{int((risk_f.grade == '점검 권장').sum()):,}", unit="대", help=texts.GRADE_HELP,
-                     sub="아직 신고되지 않은 자전거 중<br>다음 주 고장 신고 가능성 상위 5%"))
+                     sub="아직 신고되지 않은 자전거 중<br>정비 필요 가능성 상위 5%"))
 else:
     kpis.append(dict(label="점검 권장 자전거", value="—", sub="선택한 지역에 자전거 없음"))
 n = int((alerts_f.alert_ts >= data.since(48)).sum()) if alerts_f is not None and len(alerts_f) else 0
@@ -144,9 +144,9 @@ with c3:
                 ui.empty("점검 권장 등급이 아직 없습니다.")
 with c4:
     with st.container(border=True, height=BOT_H):
-        ui.card_title("점검 권장 자전거 목록", P2, sub="아직 신고되지 않은 자전거 중 다음 주 고장 신고 가능성이 높은 순", help=texts.SCORE_HELP)
+        ui.card_title("점검 권장 자전거 목록", P2, sub="아직 신고되지 않은 자전거 중 정비 필요 가능성이 높은 순", help=texts.SCORE_HELP)
         if risk_f is not None and len(risk_f):
-            ui.bike_rows(risk_f[risk_f.grade != "산정 제외"].sort_values("risk_ratio", ascending=False), n=5)
+            ui.bike_rows(risk_f[risk_f.risk_ratio.notna()].sort_values("risk_ratio", ascending=False), n=5)
         else:
             ui.empty("선택한 지역에 점검 권장 자전거가 없습니다.")
 with c5:

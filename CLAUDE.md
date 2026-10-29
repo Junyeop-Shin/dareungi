@@ -94,7 +94,7 @@ from prep import to_utf8, std_name, read_any, data_files, make_utf8_folder
 - **운영 파이프라인(3A)**: 작업은 `data/db/.ops.lock` 잠금을 쓰므로 동시에 두 개를 돌리지 않는다. 대시보드는 `serving/*.parquet`만 읽는다. 중기예보 API는 2026-10-07 승인돼 수집 중. 주간 부품 예측은 최근 4주 신고율 × 대여량 예측(`py/fc_ops.py`): 예보판(1C S1_B)을 보여 주고 달력판은 대체·병행 기록, 2026-10-12부터 12주 비교(결정 로그 2026-10-08). 신고율 음이항(1C 선택 모형)은 운영에 쓰지 않는다. 주간 예측은 유형 7칸(전체 + 타이어·체인·안장·페달 + 단말기·기타, `fc_ops.ALL`. 단말기·기타는 2026-10-10 추가)을 낸다. 맥북 crontab은 2026-10-09에 사람이 등록했고 경보는 슬랙으로 간다(`ALERT_WEBHOOK`).
 - **운영 감시(2026-10-10)**: 위험 모형은 `risk_history`·`risk_eval`로 매주 채점한다(`py/jobs/risk_track.py`). 재학습 기준은 `docs/pipeline.md`(대여량 모형: 최근 12주 오차가 기준값보다 크면 검토 + 매년 1월, 위험 모형: 채점 8주 뒤 무작위 대비 2.5배). 자료 내용 점검은 `daily.data_checks`. 푸시마다 깃허브에서 `tests/test_ops.py`·`test_analysis.py`·pyflakes가 돈다.
 - **화면 원칙(2026-10-09 ~ 10)**: 용어는 '예측'·'예측 구간'·'기준값', 아이콘·이모지 없음, 확률은 %가 아니라 평균 대비 배수, 고장 판정처럼 들리는 말 피함, 강조색은 초록 하나(주황은 갱신이 밀린 자료에만). 화면 파일을 고치면 Streamlit 서버를 다시 띄워야 반영된다. 화면 모양이 기대는 Streamlit 내부 이름표는 `docs/pipeline.md` 끝 절.
-- **위험 모형 테스트는 2026-10-07에 한 번 열었다**(`risk_eval_test.csv`). 다시 돌리지 않는다. 결과를 보고 `risk_spec.json`을 바꾸지 않는다. 점검 등급·순위는 2026-10-08부터 다음 주 신고 확률 기준이고 화면에는 평균 대비 배수만 보여 준다(모형·계수는 그대로).
+- **위험 모형 테스트는 2026-10-07에 한 번 열었다**(`risk_eval_test.csv`). 다시 돌리지 않는다. 결과를 보고 `risk_spec.json`을 바꾸지 않는다. 점검 등급·순위는 2026-10-08부터 다음 주 신고 확률 기준이었고, **2026-10-23부터는 '신고 없이 손볼 자전거' 모형(`repair_spec.json`, 정답 = 다음 주 실제 수리, 테스트 2026-10-23에 한 번 열었다 — 다시 돌리지 않는다)의 '정비 필요 가능성'으로 매긴다.** 대상은 그 주에 대여됐고 최근 14일 신고 없는 자전거. 신고 모형은 `report_*` 열로 뒤에서 계속 돌고 `risk_history`·`risk_eval`이 매주 신고로 채점한다. 자전거 조회 화면은 두 점수를 함께 보여 준다. 화면에는 평균 대비 배수만.
 - **패널(2A-9)**: `km_next`·`repaired_likely`는 라벨 쪽 정보라 2B 설명변수로 쓰지 않는다. 대여소 군집은 2025-06-30까지로만 만든다. 2B 분할: 학습 2024-01 ~ 2025-06, 검증 2025-07 ~ 12, 테스트 2026-01 ~.
 - **대여이력 적재(2A-1, 2026-10-07)**: `data/db/dareungi.duckdb`는 적재 스크립트가 잠그므로 분석 스크립트는 메모리 DB로 Parquet을 읽는다. 2026년 상세 행 수(1,851만)가 일별 대여건수(1,798만)보다 3% 많다 — 2026년 파일에만 있는 0 ~ 1분 기록 때문으로 보인다.
 - **헛대여(같은 대여소 반납) 기준은 아래쪽을 2분으로 자른다**: 2025년까지 파일에는 2분 미만 같은 대여소 반납이 없고 2026년 파일에만 0 ~ 1분 기록이 있다(`py/build/day_signal.py`). 2025-03 하락은 헛대여율(−4%)이 아니라 신고(−20%)가 줄어든 것으로 보인다(사후 분석, `docs/notes/04`).
@@ -138,7 +138,7 @@ from prep import to_utf8, std_name, read_any, data_files, make_utf8_folder
 |---|---|
 | `app/admin/`, `app/common/` | 3B 대시보드: 관리자 앱(한눈에 보기·유형별 고장 신고 예측·점검 대상·자전거 조회) 8501. 시민 조회 앱은 2026-10-10에 없앴다. `serving/*.parquet`만 읽는다. 테마는 `.streamlit/config.toml` |
 | `deploy/` | 서버 1대 배포(설치 스크립트, systemd 타이머, Caddy) |
-| `tests/`, `.github/workflows/` | `test_ops.py` 운영 파이프라인 회귀 시험 10개, `test_analysis.py` 분석 정의 시험(인코딩, 신고·대여 세는 방법), `smoke_app.py` 화면 예외 시험, `screens.py` 화면 캡처(→ `output/screens/`)와 Streamlit 이름표 확인. 앞의 둘과 pyflakes는 푸시마다 깃허브에서 돈다 |
+| `tests/`, `.github/workflows/` | `test_ops.py` 운영 파이프라인 회귀 시험 11개, `test_analysis.py` 분석 정의 시험(인코딩, 신고·대여 세는 방법), `smoke_app.py` 화면 예외 시험, `screens.py` 화면 캡처(→ `output/screens/`)와 Streamlit 이름표 확인. 앞의 둘과 pyflakes는 푸시마다 깃허브에서 돈다 |
 | `notebooks/` | `00_사전검증`, `1A_Build_master`, `1A_regime`, `1A_eda`, `1B_regression`, `1C_forecast`, `1C_test` |
 | `data/raw/external/` | `events.csv`(외부 사건 날짜·출처), `fleet.csv`(공식 운영 대수, 참고용) |
 | `data/processed/` | `daily_master_v2`(3,834일 × 75열, 깃에 있음), `fail_std`, `rent/`·`rent_2021/`(대여이력 상세), `panel/bike_week.parquet` |

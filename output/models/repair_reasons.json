@@ -1,0 +1,93 @@
+{
+  "note": "신고 없이 손볼 자전거 모형(repair_spec.json)의 이유 문구. 표시 문구만이고 모형과 무관하다. 위험 모형 문구(risk_spec.json reason_phrases)에 이 모형에서 기여가 큰 이용량·이용 시간대 변수의 문구를 더했다(사람: '설명하는 거에 새 문구가 더 필요하면 새 문구를 추가', 2026-10-23). high = 값이 그 주 중앙값 이상일 때, low = 미만일 때의 문구. null이면 그 방향은 이유로 쓰지 않는다",
+  "reason_phrases": {
+    "km_since_rep": {
+      "high": "지난 신고 뒤 오래 달림",
+      "low": "최근 신고 뒤 수리되지 않았을 가능성 높음"
+    },
+    "days_since_rep": {
+      "high": "지난 신고 뒤 오래 지남",
+      "low": "지난 신고가 몇 주 안 됨"
+    },
+    "trips_since_rep": {
+      "high": "지난 신고 뒤 대여가 많음",
+      "low": null
+    },
+    "climb_since_rep": {
+      "high": "오르막을 많이 달림",
+      "low": null
+    },
+    "sh_wet": {
+      "high": "비 그친 직후 젖은 길을 많이 달림",
+      "low": null
+    },
+    "sh_rain": {
+      "high": "비 오는 중에 많이 달림",
+      "low": null
+    },
+    "sh_commute": {
+      "high": "출퇴근 시간 이용이 많음",
+      "low": null
+    },
+    "sham_2w": {
+      "high": "최근 2주 안에 빌리자마자 반납된 적 있음",
+      "low": null
+    },
+    "rep_13w": {
+      "high": "최근 3개월 안에 고장 신고된 적 있음",
+      "low": null
+    },
+    "age_days": {
+      "high": "운행한 지 오래됨",
+      "low": null
+    },
+    "km_total": {
+      "high": "누적 주행거리가 김",
+      "low": null
+    },
+    "reloc_per_trip": {
+      "high": "트럭 재배치가 잦음",
+      "low": null
+    },
+    "freeze_days_since_rep": {
+      "high": "얼었다 녹은 날이 많았음",
+      "low": null
+    },
+    "rain_days_since_rep": {
+      "high": "비 온 날이 많았음",
+      "low": null
+    },
+    "speed_med": {
+      "high": "다른 자전거보다 빠르게 달림",
+      "low": "느리게 달린 기록이 많음(바퀴·체인·안장 상태 확인)"
+    },
+    "speed_sd": {
+      "high": "달리는 속도가 들쑥날쑥함",
+      "low": null
+    },
+    "last_repaired": {
+      "high": null,
+      "low": "지난 신고 뒤 정비 기록 없음"
+    },
+    "n_trips": {
+      "high": null,
+      "low": "이번 주 이용이 적음"
+    },
+    "km": {
+      "high": null,
+      "low": "이번 주 이용이 적음"
+    },
+    "minutes": {
+      "high": null,
+      "low": "이번 주 이용이 적음"
+    },
+    "sh_leisure": {
+      "high": null,
+      "low": "평일 편도 이동 위주"
+    },
+    "km_4w": {
+      "high": "최근 4주 많이 달림",
+      "low": null
+    }
+  }
+}

@@ -116,15 +116,19 @@ if bid is not None and found:
     age_ok = c is not None and has(c.age_years)          # 번호가 처음 나타난 날을 도입일로 보는 것은 2022-03 이후 번호에서만 믿는다(그 전 번호는 값이 비어 있다)
     ui.kpi_strip([
         # 요약 띠는 숫자만 크게. 등급 이름은 위 결론 줄과 겹치므로 여기서는 배수 아래 작은 글씨로
-        dict(label="다음 주 고장 신고 가능성", value=f"{r.risk_ratio:.1f}", unit="배", sub=f"전체 자전거 평균 대비 · 등급 {grade}", help=texts.SCORE_HELP)
-        if r is not None and has(r.risk_ratio) else dict(label="다음 주 고장 신고 가능성", value="—", sub="최근 4주 이용이 적어 순위를 매기지 않음"),
+        # 두 점수를 함께 보여 준다(사람 결정 2026-10-23): 점검 권장 순위를 매기는 정비 필요 가능성, 이전 기준인 고장 신고 가능성
+        dict(label="정비 필요 가능성", value=f"{r.risk_ratio:.1f}", unit="배", sub=f"대상 자전거 평균 대비 · 등급 {grade}", help=texts.SCORE_HELP)
+        if r is not None and has(r.risk_ratio) else dict(label="정비 필요 가능성", value="—", sub=f"순위 대상 아님 · {grade}" if r is not None else "점수 없음",
+                                                         help="그 주에 대여됐고 최근 14일 안에 신고가 없던 자전거만 순위를 매깁니다."),
+        dict(label="다음 주 고장 신고 가능성", value=f"{r.report_ratio:.1f}", unit="배", sub="전체 자전거 평균 대비", help=texts.REPORT_HELP)
+        if r is not None and "report_ratio" in r and has(r.report_ratio) else dict(label="다음 주 고장 신고 가능성", value="—", sub="최근 4주 이용이 적어 매기지 않음"),
         dict(label="주간 주행거리", value=f"{r.km_4w / 4:,.0f}" if r is not None and has(r.km_4w) else "—", unit="km", sub="최근 4주 평균"),
         dict(label="최근 30일 이용", value=f"{int(c.trips_30d):,}" if c is not None and has(c.trips_30d) else "—", unit="회",
              sub=f"{c.km_30d:,.0f}km 주행" if c is not None and has(c.km_30d) else ""),
         dict(label="운행 기간", value=f"{c.age_years:g}" if age_ok else "확인 어려움", unit="년" if age_ok else "",
              sub="" if age_ok else "도입 시기를 알 수 없음",          # 왜 알 수 없는지는 마우스를 올리면 뜨는 설명(help)에
              help="자전거 번호는 2020 ~ 2022년 2월에 단말기 교체로 모두 새로 붙었습니다. 그래서 2022년 3월 이후에 처음 나타난 번호만 운행 기간을 계산합니다."),
-    ])
+    ], narrow=True)
     def card_lists():
         """점검 대상 화면의 세 목록 가운데 어디에 들어 있는지"""
         ui.card_title("점검 대상 여부", sub="점검 대상 화면의 세 목록 가운데 어디에 들어 있는지")

@@ -13,10 +13,12 @@
   8. risk_track: 점수 이력을 주 단위로 바꿔 넣고, 다음 주가 다 지난 주만 실제 신고로 채점한다
   9. actuals.retrain_check: 12주가 차고 예측 오차가 기준값보다 클 때만 재학습 검토를 알린다
  10. risk_track.retrain_note: 8주 전에는 조용하고, 8주째에 한 번 알리고, 그 뒤에는 기준 아래로 내려갈 때만 알린다
+ 11. risk_track.repair_grade: 정비 필요 가능성 순위는 그 주에 대여됐고 최근 14일 신고 없는 자전거만 매긴다(2026-10-23)
 
 실행: .venv/bin/python tests/test_ops.py
 """
 import datetime as dt
+import os
 import subprocess
 import sys
 import tempfile
@@ -35,6 +37,7 @@ import hourly          # noqa: E402
 import daily           # noqa: E402
 import risk_track      # noqa: E402
 import actuals         # noqa: E402
+os.environ.pop("ALERT_WEBHOOK", None)          # 모듈들이 import 때 .env를 읽어도 시험(잠금 실패 등)이 실제 슬랙으로 경보를 보내지 않게
 
 
 def test_risk_retrain_note_stages():
@@ -56,18 +59,35 @@ def test_retrain_check_needs_12_weeks_and_worse_than_naive():
 
 def test_risk_track_history_and_eval():
     con = duckdb.connect()
-    # 자전거 4대: 1번이 배수 가장 높음. 점수 주 2026-09-28 → 채점 대상은 10/5 ~ 10/11
-    con.execute("""CREATE TABLE bike_risk_latest AS SELECT * FROM (VALUES (TIMESTAMP '2026-09-28', 1, '점검 권장', 9.0, 0.5, 'v1'), (TIMESTAMP '2026-09-28', 2, '주의', 3.0, 0.2, 'v1'),
-                   (TIMESTAMP '2026-09-28', 3, '낮음', 0.5, 0.01, 'v1'), (TIMESTAMP '2026-09-28', 4, '산정 제외', NULL, NULL, 'v1')) t(wk, bike_id, grade, risk_ratio, prob_next, model_version)""")
+    # 자전거 4대: 신고 모형(report_*)으로 1번이 배수 가장 높음. 점수 주 2026-09-28 → 채점 대상은 10/5 ~ 10/11
+    # grade·risk_ratio는 화면용 정비 필요 가능성(2026-10-23부터)이고, 이력의 grade·risk_ratio에는 신고 모형 값이 들어가야 한다
+    con.execute("""CREATE TABLE bike_risk_latest AS SELECT * FROM (VALUES
+                   (TIMESTAMP '2026-09-28', 1, '최근 신고', NULL, '점검 권장', 9.0, 0.5, 'v1'), (TIMESTAMP '2026-09-28', 2, '점검 권장', 5.0, '주의', 3.0, 0.2, 'v1'),
+                   (TIMESTAMP '2026-09-28', 3, '낮음', 0.4, '낮음', 0.5, 0.01, 'v1'), (TIMESTAMP '2026-09-28', 4, '산정 제외', NULL, '산정 제외', NULL, NULL, 'v1'))
+                   t(wk, bike_id, grade, risk_ratio, report_grade, report_ratio, prob_next, model_version)""")
     con.execute("CREATE TABLE reported_recent AS SELECT 2 AS bike_id")
     con.execute("""CREATE TABLE fail_live AS SELECT * FROM (VALUES (1, TIMESTAMP '2026-10-06 09:00', '체인'), (1, TIMESTAMP '2026-10-07 09:00', '타이어'),
                    (3, TIMESTAMP '2026-10-01 09:00', '안장'), (9, TIMESTAMP '2026-10-11 23:00', '기타')) t(bike_id, reg_ts, kind)""")
     assert risk_track.save_history(con)[1] == 4 and risk_track.save_history(con)[1] == 4, "같은 주를 다시 넣으면 줄이 늘면 안 된다"
+    h = con.execute("SELECT grade, risk_ratio, repair_grade, repair_ratio FROM risk_history WHERE bike_id = 2").fetchone()
+    assert h == ("주의", 3.0, "점검 권장", 5.0), f"이력에 두 모형 값이 제자리에 들어가지 않았다: {h}"
     assert len(risk_track.evaluate(con)) == 0, "다음 주(10/5 ~ 10/11)가 아직 안 끝났는데 채점했다"
     con.execute("INSERT INTO fail_live VALUES (9, TIMESTAMP '2026-10-12 08:00', '기타')")          # 다음 주가 다 지났다
     e = risk_track.evaluate(con).iloc[0]
     assert e.n_ranked == 3 and abs(e.base_rate - 1 / 3) < 1e-9 and e.n_insp == 1 and e.hit_insp == 1.0, e.to_dict()          # 3번의 10/1 신고는 채점 주 밖
     assert abs(e.share_chain - 1 / 3) < 1e-9 and abs(e.share_tire - 1 / 3) < 1e-9, e.to_dict()          # 그 주 신고 3행 중 체인 1, 타이어 1(기타 1)
+
+
+
+def test_repair_grade_targets_rented_quiet_bikes():
+    # 대여 0회 → 산정 제외, 최근 14일 안 신고 → 최근 신고, 나머지 4대만 순위. 배수는 대상 4대 평균 대비
+    n_trips = [0, 3, 5, 5, 5, 5]
+    days = [None, 3, None, 20, 15, 30]
+    prob = [0.9, 0.9, 0.4, 0.3, 0.2, 0.1]
+    cut = {"점검 권장": 0.95, "주의": 0.8, "보통": 0.5}
+    ok, ratio, pct, grade = risk_track.repair_grade(n_trips, [float("nan") if d is None else d for d in days], prob, cut)
+    assert list(grade) == ["산정 제외", "최근 신고", "점검 권장", "보통", "보통", "낮음"], list(grade)
+    assert ok.sum() == 4 and abs(ratio[2] - 0.4 / 0.25) < 1e-9 and np.isnan(ratio[0]) and np.isnan(ratio[1])
 
 
 def test_data_checks_catch_new_kind_and_odd_rows():

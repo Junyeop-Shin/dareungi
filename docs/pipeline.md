@@ -13,7 +13,7 @@
 | collect_wx | `py/jobs/collect_wx.py` | 06:30 (obs), 05:20·17:20 (fcst) | ASOS 시간자료, 단기예보(+103h), 중기예보(4 ~ 10일, 06·18시 발표) | `wx_hourly_live`, `fcst_archive`(src = short / mid) | 예보는 발표 시각과 함께 → 1C '실제 예보' 백테스트 재료. 중기 API 승인 확인 2026-10-07 |
 | collect_station | `py/jobs/collect_station.py` | 월 05:00 | 대여소 API 2종 | `station_hist`, `station_live` | 새 대여소만 고도 API |
 | daily | `py/jobs/daily.py` | 매일 07:00 | 위 표들 + `actuals.refresh()`(일 × 자치구 실적 → `weekly_actual`·`daily_reports`·`forecast_track`) | `trips_live_x`, `bw_usage`·`bw_fail`(이번 주), `panel`, `panel_latest`, `bike_card`, `quality_log` | 품질 점검 + 스냅샷 |
-| weekly | `py/jobs/weekly.py` | 월 07:30 | `panel_latest`, 모형, `daily_district` | `bike_risk_latest`, `forecast_weekly`, `risk_history`, `risk_eval` | 완결된 주로만 점수. 점수를 낸 뒤 이력을 쌓고 지난 추천을 채점한다(`risk_track.py`). 주간 예측은 유형 7칸(전체 + 네 부품 + 단말기·기타). 예측 = 그 주 월 ~ 일(언제 돌려도 원점은 그 주 월요일), 최근 4주 신고율 × 대여량 예측(`py/fc_ops.py`). 예보판을 보여 주고 예보가 비면 달력판, 두 값 모두 기록. 80% 구간은 2024 검증 구간 오차(`fc_ops_spec.json`) |
+| weekly | `py/jobs/weekly.py` | 월 07:30 | `panel_latest`, 모형, `daily_district` | `bike_risk_latest`, `forecast_weekly`, `risk_history`, `risk_eval` | 완결된 주로만 점수. 2026-10-23부터 `grade`·`risk_ratio`·`reasons`는 정비 필요 가능성(`repair_spec.json`, 그 주 대여되고 최근 14일 신고 없는 자전거만, 이유 문구 `repair_reasons.json`), 신고 모형 값은 `report_grade`·`report_ratio`·`report_reasons`·`prob_next`. 점수를 낸 뒤 이력을 쌓고 지난 추천을 채점한다(`risk_track.py`). 주간 예측은 유형 7칸(전체 + 네 부품 + 단말기·기타). 예측 = 그 주 월 ~ 일(언제 돌려도 원점은 그 주 월요일), 최근 4주 신고율 × 대여량 예측(`py/fc_ops.py`). 예보판을 보여 주고 예보가 비면 달력판, 두 값 모두 기록. 80% 구간은 2024 검증 구간 오차(`fc_ops_spec.json`) |
 | publish | `py/jobs/publish.py` | daily·weekly 끝에 | 위 표 | `serving/*.parquet` | 원자적 교체. 대시보드는 이것만 읽음 |
 | actuals | `py/jobs/actuals.py` | daily가 호출. 과거분은 `actuals.py hist` 한 번 | 분석 DB(과거), `trips_live`·`fail_live`(이후) | `daily_district(_hist/_live)`, `weekly_actual`, `daily_reports`, `forecast_track` | 대여 = 대여 대여소의 구, 신고 = 직전 반납 대여소의 구. 과거분은 마스터와 신고 건수 완전 일치. 유형 열은 6가지(타이어·체인·안장·페달·단말기·기타, 2026-10-10부터) |
 | init_ops | `py/jobs/init_ops.py` | 처음 한 번, 반기 대사 뒤 | 분석 DB | `bw_usage`, `bw_fail`, `bike_info`, `station_base`, `wx_w`, `station_cluster` | '마지막 신고 이후 누적'을 2023-07부터 잇는다 |
@@ -110,7 +110,7 @@
 
 공통 원칙: 다시 맞춘 모형은 파일 이름·설정의 version을 올리고 결정 로그에 남긴다. 결과가 나빠도 기준을 바꿔 좋게 보이게 하지 않는다.
 
-위험 모형의 이력과 채점(2026-10-10): `py/jobs/risk_track.py`. weekly가 점수를 낸 뒤 `risk_history`(주 × 자전거)에 쌓고, 다음 주가 다 지난 주를 `risk_eval`에 채점한다(주마다 한 줄, weekly 로그에 한 줄 출력). 둘 다 운영 DB에만 있고 화면에는 아직 내보내지 않는다. 이력은 2026-09-28 주 점수부터라 첫 채점은 2026-10-12 실행에서 나온다. 담당자가 추천 자전거를 미리 손보면 신고가 줄어 적중률이 낮게 나온다는 점을 같이 읽는다.
+위험 모형의 이력과 채점(2026-10-10): `py/jobs/risk_track.py`. weekly가 점수를 낸 뒤 `risk_history`(주 × 자전거)에 쌓고, 다음 주가 다 지난 주를 `risk_eval`에 채점한다(주마다 한 줄, weekly 로그에 한 줄 출력). 둘 다 운영 DB에만 있고 화면에는 아직 내보내지 않는다. 2026-10-23부터 이력의 `grade`·`risk_ratio`는 계속 신고 모형 값이고(채점이 이어지게), 화면 순위인 정비 필요 가능성은 `repair_grade`·`repair_ratio` 열에 따로 쌓는다. 정비 필요 가능성은 실제 정비 자료가 없어 운영 중에 채점하지 못한다(결정 로그 2026-10-23). 이력은 2026-09-28 주 점수부터라 첫 채점은 2026-10-12 실행에서 나온다. 담당자가 추천 자전거를 미리 손보면 신고가 줄어 적중률이 낮게 나온다는 점을 같이 읽는다.
 
 ## Streamlit 버전을 올릴 때 (2026-10-10)
 

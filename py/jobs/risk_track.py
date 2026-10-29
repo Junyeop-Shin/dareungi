@@ -1,4 +1,9 @@
-"""위험 모형(자전거별 점검 권장 순위)이 운영에서 여전히 맞는지 지켜보는 표 두 개(사람 결정 2026-10-10).
+"""자전거별 점수의 이력과 채점(사람 결정 2026-10-10), 그리고 화면의 점검 권장 등급을 매기는 규칙(2026-10-23).
+
+2026-10-23부터 화면의 점검 권장 순위는 '신고 없이 손볼 자전거' 모형(정답 = 다음 주 실제 수리, output/models/repair_spec.json)으로
+매긴다(repair_grade). 지금까지의 위험 모형(신고로 학습)은 화면에서 내렸지만 계속 점수를 내고, 아래 이력·채점은 그 위험 모형을
+지켜본다(risk_history의 grade·risk_ratio = 위험 모형). 새 모형 점수는 repair_grade·repair_ratio 열에 함께 쌓는다.
+새 모형은 정답(정비 기록)이 운영 중에 들어오지 않아 채점하지 못한다. 공단 정비 자료를 다시 받으면 이 이력으로 채점한다.
 
 왜: 주간 예측은 forecast_track으로 매주 채점하는데, 점검 권장 순위는 2B 테스트(2026-10-07) 뒤로 맞는지 본 적이 없다.
 점수 표(bike_risk_latest)는 매주 덮어쓰여서 '그때 누구를 추천했는지'도 남지 않았다.
@@ -16,19 +21,48 @@
 lightgbm 같은 무거운 패키지를 불러오지 않는다(tests/test_ops.py와 자동 시험이 이 파일만 불러 쓴다). weekly.py가 점수를 낸 뒤 부른다.
 입력: ops.duckdb bike_risk_latest, reported_recent, fail_live   출력: 같은 DB의 risk_history, risk_eval
 """
+import numpy as np
+
+QUIET_DAYS = 14          # 최근 이만큼 안에 신고된 자전거는 새 모형의 대상에서 뺀다(학습·채점 때와 같음)
+
+
+def repair_grade(n_trips, days_since_rep, prob, cut):
+    """새 모형 점수로 화면 등급을 매긴다. 대상은 그 주에 대여됐고 최근 14일 안에 신고가 없던 자전거뿐이다
+    (대여되지 않은 자전거는 이미 수거됐을 수 있고, 최근 신고된 자전거는 신고 목록에 따로 나온다. 결정 로그 2026-10-23).
+    입력: 같은 길이의 배열들(대여 수, 마지막 신고 뒤 일수(없으면 NaN), 다음 주 수리 확률), 등급 기준 백분위 cut.
+    반환: (대상 여부, 대상 평균 대비 배수, 대상 안 백분위, 등급) — 대상이 아니면 배수·백분위는 NaN, 등급은
+    '최근 신고'(대여는 됐지만 최근 신고) 또는 '산정 제외'(그 주 대여 없음)"""
+    n_trips, ds, prob = (np.asarray(x, dtype=float) for x in (n_trips, days_since_rep, prob))
+    rented = n_trips > 0
+    quiet = np.isnan(ds) | (ds > QUIET_DAYS)
+    ok = rented & quiet
+    avg = np.nanmean(np.where(ok, prob, np.nan)) if ok.any() else np.nan
+    ratio = np.where(ok, prob / avg, np.nan)
+    pct = np.full(len(prob), np.nan)
+    if ok.any():
+        r = prob[ok].argsort().argsort()
+        pct[ok] = (r + 1) / ok.sum()
+    grade = np.select([~rented, ~quiet, pct >= cut["점검 권장"], pct >= cut["주의"], pct >= cut["보통"]],
+                      ["산정 제외", "최근 신고", "점검 권장", "주의", "보통"], default="낮음")
+    return ok, ratio, pct, grade
+
+
 KINDS = {"타이어": "share_tire", "체인": "share_chain", "안장": "share_saddle", "페달": "share_pedal"}
 
 
 def save_history(con):
-    """지금의 bike_risk_latest를 risk_history에 넣는다. 반환: (주, 넣은 줄 수)"""
+    """지금의 bike_risk_latest를 risk_history에 넣는다. grade·risk_ratio에는 위험 모형(신고로 학습)의 값을 넣어 채점을 이어 가고,
+    새 모형(화면 점검 권장)의 값은 repair_grade·repair_ratio에 넣는다. 반환: (주, 넣은 줄 수)"""
     con.execute("""CREATE TABLE IF NOT EXISTS risk_history (wk DATE, bike_id INTEGER, grade VARCHAR, risk_ratio DOUBLE, prob_next DOUBLE,
                    recently_reported BOOLEAN, model_version VARCHAR, scored_at TIMESTAMP)""")
+    for c, typ in (("repair_grade", "VARCHAR"), ("repair_ratio", "DOUBLE")):          # 2026-10-23에 더한 열. 이전 이력은 비어 있다
+        con.execute(f"ALTER TABLE risk_history ADD COLUMN IF NOT EXISTS {c} {typ}")
     wk = con.execute("SELECT CAST(max(wk) AS DATE) FROM bike_risk_latest").fetchone()[0]
     con.execute("DELETE FROM risk_history WHERE wk = ?", [wk])
     rep = "bike_id IN (SELECT bike_id FROM reported_recent)" if con.execute(
         "SELECT count(*) FROM information_schema.tables WHERE table_name = 'reported_recent'").fetchone()[0] else "FALSE"
-    con.execute(f"""INSERT INTO risk_history
-                    SELECT CAST(wk AS DATE), bike_id, grade, risk_ratio, prob_next, {rep}, model_version, now()
+    con.execute(f"""INSERT INTO risk_history (wk, bike_id, grade, risk_ratio, prob_next, recently_reported, model_version, scored_at, repair_grade, repair_ratio)
+                    SELECT CAST(wk AS DATE), bike_id, report_grade, report_ratio, prob_next, {rep}, model_version, now(), grade, risk_ratio
                     FROM bike_risk_latest WHERE CAST(wk AS DATE) = ?""", [wk])
     return wk, con.execute("SELECT count(*) FROM risk_history WHERE wk = ?", [wk]).fetchone()[0]
 
