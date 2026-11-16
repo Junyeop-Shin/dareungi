@@ -45,6 +45,8 @@ declare -A JOBS=(
   [daily]="*-*-* 07:00:00|py/jobs/daily.py"
   [weekly]="Mon *-*-* 07:30:00|py/jobs/weekly.py"
   [collect_station]="Mon *-*-* 05:00:00|py/jobs/collect_station.py"
+  [collect_stock]="*-*-* *:00/5:00|py/jobs/collect_stock.py"
+  [collect_traffic]="*-*-* *:00/15:00|py/jobs/collect_traffic.py"
 )
 for name in "${!JOBS[@]}"; do
   IFS='|' read -r cal cmd <<<"${JOBS[$name]}"

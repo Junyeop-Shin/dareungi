@@ -28,6 +28,15 @@ ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
 SEOUL = "http://openapi.seoul.go.kr:8088"
 LOCK = ROOT / "data/db/.ops.lock"
+# 재배치 근무조(팀 프로젝트의 역산 시간대: 07–10, 13–16, 19–21시). 수집 주기를 시간대마다 달리 둔다(결정 로그 2026-11-01)
+SHIFTS = ((7, 10), (13, 16), (19, 21))
+
+
+def rebal_band(ts):
+    """그 시각이 근무조('shift'), 그 밖 06–22시('day'), 22–06시('night') 중 어디인지."""
+    if any(a <= ts.hour < b for a, b in SHIFTS):
+        return "shift"
+    return "day" if 6 <= ts.hour < 22 else "night"
 
 
 def connect(path="data/db/ops.duckdb"):
@@ -42,7 +51,7 @@ def connect(path="data/db/ops.duckdb"):
 
 @contextmanager
 def job_lock(wait_s=2, tries=150):
-    """잠금 파일에 flock을 걸어 DB 사용 순서를 맞춘다. 2초 간격으로 최대 5분 기다린다.
+    """잠금 파일에 flock을 걸어 DB 사용 순서를 맞춘다. 2초 간격으로 기본 5분 기다린다(재배치 수집기는 주간 작업 9분을 넘기려고 15분).
 
     잠금은 운영체제가 들고 있어서 잡은 프로세스가 죽으면 저절로 풀린다(남은 잠금을 지우는 처리가 필요 없다).
     파일 자체는 지우지 않는다. 지우면 기다리던 작업과 새 작업이 서로 다른 파일을 잡을 수 있다.
@@ -55,7 +64,7 @@ def job_lock(wait_s=2, tries=150):
             except BlockingIOError:
                 time.sleep(wait_s)
         else:
-            alert("DB 잠금을 5분 동안 얻지 못해 작업을 건너뛴다(다른 작업이 오래 돌고 있음)")          # 작업의 try 밖에서 나는 예외라 여기서 알린다
+            alert(f"DB 잠금을 {wait_s * tries // 60}분 동안 얻지 못해 작업을 건너뛴다(다른 작업이 오래 돌고 있음)")          # 작업의 try 밖에서 나는 예외라 여기서 알린다
             raise RuntimeError("DB 잠금을 얻지 못했다(다른 작업이 오래 돌고 있음)")
         yield
 

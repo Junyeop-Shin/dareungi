@@ -57,7 +57,7 @@ scp data/interim/weather_forecast/kma_by_origin.parquet <서버>:~/dareungi/data
    print('기상청 ASOS:', 0 if w is None else len(w), '시간')"
    ```
 2. 맥북에서 새 서버 키를 ssh-agent에 올리고 옛 서버에 `-A`로 들어간다(키 파일을 옛 서버에 두지 않는다): `ssh-add <새 서버 키>.pem`, `ssh -A -i <옛 서버 키>.pem ubuntu@<옛 IP>`. 옛 서버에서 `ssh ubuntu@<새 IP> hostname`이 되는지 먼저 본다.
-3. 옛 서버: 타이머 8개를 끈다(`systemctl stop`, 이름 하나씩) → 위 잠금 사본 스크립트 → `md5sum`.
+3. 옛 서버: 타이머를 모두 끈다(2026-11-06에는 8개, 지금은 10개)(`systemctl stop`, 이름 하나씩) → 위 잠금 사본 스크립트 → `md5sum`.
 4. 옛 서버에서 `scp`로 새 서버에 보낸다: 사본(→ `data/db/ops.duckdb`), `station_master.csv`·`station_cluster.csv`, `kma_by_origin.parquet`, `serving/`. 새 서버에서 `md5sum`이 같은지 본다.
 5. 옛 서버 타이머가 0개인지 다시 보고 새 서버에서 아래 4번(켜고 확인). 주소는 DuckDNS에서 IP만 새 고정 IP로 바꾸고(`https://www.duckdns.org`, www 없는 주소는 응답하지 않았다) DNS가 바뀐 뒤 Caddy를 재시작해야 인증서가 바로 나온다.
 6. 새 서버가 며칠 정상으로 돈 뒤 옛 서버를 지운다: 인스턴스, **고정 IP(따로 지워야 과금이 멈춘다)**, 스냅샷, 깃허브 Deploy keys의 옛 키. 옛 서버에만 있는 것은 `logs/`뿐이었다(맥북 `data/archive/`에 받아 둠).
@@ -73,8 +73,8 @@ sudo nano /etc/caddy/Caddyfile              # 주소가 다르면 내 것으로.
 sudo systemctl restart caddy dareungi-app-admin
 .venv/bin/python py/common.py alert-test    # 슬랙에 시험 알림
 .venv/bin/python py/jobs/hourly.py | tail -3
-for t in collect_rent detect_sham hourly collect_wx_fcst collect_wx_obs daily weekly collect_station; do sudo systemctl start dareungi-$t.timer; done
-systemctl list-timers | grep -c dareungi    # 8
+for t in collect_rent detect_sham hourly collect_wx_fcst collect_wx_obs daily weekly collect_station collect_stock collect_traffic; do sudo systemctl start dareungi-$t.timer; done
+systemctl list-timers | grep -c dareungi    # 10
 ```
 멈춘 타이머는 `systemctl start 'dareungi-*.timer'`처럼 `*`로는 켜지지 않는다(이름을 하나씩 준다).
 

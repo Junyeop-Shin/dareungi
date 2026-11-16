@@ -14,6 +14,8 @@
   9. actuals.retrain_check: 12주가 차고 예측 오차가 기준값보다 클 때만 재학습 검토를 알린다
  10. risk_track.retrain_note: 8주 전에는 조용하고, 8주째에 한 번 알리고, 그 뒤에는 기준 아래로 내려갈 때만 알린다
  11. risk_track.repair_grade: 정비 필요 가능성 순위는 그 주에 대여됐고 최근 14일 신고 없는 자전거만 매긴다(2026-10-23)
+ 12. collect_stock·collect_traffic.slot: 근무조·낮·밤마다 정한 간격에만 받고, 도로 속도는 한도에 걸린 날 근무조 30분(2026-11-01)
+ 13. collect_traffic: 한도 오류 메시지를 알아보고, 걸리면 남은 링크를 부르지 않고 받은 것만 돌려준다
 
 실행: .venv/bin/python tests/test_ops.py
 """
@@ -32,6 +34,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "py"), str(ROOT / "py/jobs")]
 import common          # noqa: E402
 import collect_rent    # noqa: E402
+import collect_stock   # noqa: E402
+import collect_traffic  # noqa: E402
 import fc_ops          # noqa: E402
 import hourly          # noqa: E402
 import daily           # noqa: E402
@@ -152,6 +156,41 @@ def test_pending_hours():
     assert first[0] == dt.datetime(2026, 10, 6, 9) and first[-1] == dt.datetime(2026, 10, 9, 9)
     con.execute("INSERT INTO rent_hours_done VALUES ('2026-10-09 08:00', 1, now())")
     assert collect_rent.pending_hours(con, now) == [dt.datetime(2026, 10, 8, 10), dt.datetime(2026, 10, 9, 7), dt.datetime(2026, 10, 9, 9)]
+
+
+def test_collect_slots():
+    at = lambda h, m, s=0: dt.datetime(2026, 11, 2, h, m, s)
+    assert collect_stock.slot(at(8, 5, 40)) == at(8, 5)                     # 근무조 5분, 늦게 깨워도 같은 칸
+    assert collect_stock.slot(at(8, 7)) == at(8, 5)
+    assert collect_stock.slot(at(11, 5)) is None and collect_stock.slot(at(11, 15)) == at(11, 15)   # 낮 15분
+    assert collect_stock.slot(at(23, 15)) is None and collect_stock.slot(at(23, 30)) == at(23, 30)  # 밤 30분
+    assert collect_traffic.slot(at(9, 15)) == at(9, 15)                       # 근무조 15분
+    assert collect_traffic.slot(at(9, 15), fallback=True) is None and collect_traffic.slot(at(9, 30), fallback=True) == at(9, 30)
+    assert collect_traffic.slot(at(11, 15)) is None and collect_traffic.slot(at(11, 0)) == at(11, 0)   # 낮 1시간
+    assert collect_traffic.slot(at(23, 0)) is None and collect_traffic.slot(at(3, 0)) is None          # 밤에는 안 받는다
+    assert common.rebal_band(at(10, 0)) == "day" and common.rebal_band(at(21, 30)) == "day" and common.rebal_band(at(5, 59)) == "night"
+
+
+def test_traffic_quota_stops_and_keeps_rows():
+    class R:
+        def __init__(self, body): self.content = body.encode()
+        def raise_for_status(self): pass
+    ok = "<TrafficInfo><RESULT><CODE>INFO-000</CODE><MESSAGE>정상</MESSAGE></RESULT><row><link_id>{}</link_id><prcs_spd>30</prcs_spd><prcs_trv_time>60</prcs_trv_time></row></TrafficInfo>"
+    quota = "<response><RESULT><CODE>ERROR-337</CODE><MESSAGE>일별 트래픽 제한을 넘은 호출입니다</MESSAGE></RESULT></response>"
+    calls = []
+
+    def fake_get(url, timeout):
+        i = int(url.rstrip("/").split("/")[-1]); calls.append(i)
+        return R(quota if i >= 5 else ok.format(i))
+
+    real, os.environ["SEOUL_API_KEY"] = collect_traffic.requests.get, os.environ.get("SEOUL_API_KEY", "x")
+    collect_traffic.requests.get = fake_get
+    try:
+        d, hit, failed = collect_traffic.fetch_speeds(list(range(100)))
+    finally:
+        collect_traffic.requests.get = real
+    assert hit and "트래픽" in hit and failed == 0
+    assert set(d.link_id) <= set(range(5)) and len(calls) < 100, "한도에 걸린 뒤에도 계속 불렀다"
 
 
 def test_amount():
