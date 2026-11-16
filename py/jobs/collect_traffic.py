@@ -92,7 +92,7 @@ def fetch_speeds(ids):
         except RuntimeError:
             failed.append(i)
 
-    with ThreadPoolExecutor(4) as ex:
+    with ThreadPoolExecutor(16) as ex:      # 시드니 서버는 호출당 0.45초라 4개면 12분, 16개면 약 3분(2026-11-16 시험, 오류 0)
         rows = [r for out in ex.map(one, ids) if out for r in out]
     d = pd.DataFrame(rows)
     if len(d):
