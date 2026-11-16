@@ -6,9 +6,10 @@
 - 2 vCPU, 4GB RAM, 디스크 30GB 이상(운영 DB는 최근 120일 기준 수 GB). 시간대 `Asia/Seoul`.
 - 열어야 할 포트: 80, 443(Caddy). 8501은 밖에 열지 않는다(Caddy가 내부로 넘김).
 - 서울 열린데이터 API는 **8088 포트 평문 HTTP**다. 바깥 연결(egress)이 막혀 있지 않은지 확인.
+- 해외 리전이어도 된다: 시드니 서버에서 서울시·공공데이터포털 API가 실제 키로 응답했다(2026-11-06). 새 리전에 올리면 `.env`를 넣은 직후 아래 "서버 옮기기"의 API 시험부터 돌린다.
 - 도메인 하나(없으면 DuckDNS 등 무료 서브도메인)를 서버 IP로 연결. Caddy가 인증서를 자동 발급한다.
 
-## 설치 순서 (2026-10-10에 AWS Lightsail 서울, Ubuntu 24.04 · 4GB · x86에서 이 순서로 올렸다)
+## 설치 순서 (2026-10-10에 AWS Lightsail 서울, 2026-11-06에 새 계정의 Lightsail 시드니로 옮길 때 이 순서로 올렸다. 둘 다 Ubuntu 24.04 · 4GB · x86)
 
 서버를 만들 때: 고정 IP를 붙이고, 방화벽에 HTTPS(443)를 추가한다(22·80은 기본). 도메인이 없으면 `<고정IP>.sslip.io`를 주소로 쓴다(가입 없이 인증서까지 나온다).
 
@@ -20,6 +21,10 @@ git clone git@github.com:Junyeop-Shin/dareungi.git ~/dareungi
 cd ~/dareungi && bash deploy/setup.sh       # 파이썬 venv·패키지(약 10분, torch가 크다)·Caddy·systemd. 타이머는 등록만 하고 켜지 않는다
 nano .env                                   # SEOUL_API_KEY=..., DATA_GO_KR_KEY=..., ALERT_WEBHOOK=...
                                             # 메모리 4GB 서버는 OPS_DUCKDB_MEMORY=2GB 도 넣는다(안 넣으면 daily가 메모리 부족으로 죽는다)
+chmod 600 .env && cut -d= -f1 .env          # 값은 안 보이고 이름 4개만 나오면 된다
+# 스왑 4GB: 메모리 상한을 낮춰도 daily가 잠깐 넘칠 때를 받아 준다(2026-10-10에 이것까지 해야 살았다)
+sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```
 
 **2. 맥북에서: 깃에 없는 자료 옮기기.** 운영 DB는 **그냥 복사하면 안 된다.** 예약 작업이 쓰는 중에 복사하면 깨진 파일이 간다(실제로 겪었다: 서버에서 `Failed to load metadata pointer`). 잠근 채로 사본을 만들어 그 사본을 보낸다.
@@ -38,6 +43,24 @@ ssh <서버> "mkdir -p ~/dareungi/data/interim/weather_forecast"
 scp data/interim/weather_forecast/kma_by_origin.parquet <서버>:~/dareungi/data/interim/weather_forecast/
 ```
 분석 DB(22GB)는 옮기지 않는다. 모형(`output/models/`)과 마스터·공휴일 표는 깃에 있다.
+
+**서버 옮기기** (옛 서버가 돌고 있을 때. 2026-11-06에 이렇게 했고 수집은 14분 멈췄다). 최신 자료는 맥북이 아니라 옛 서버에 있으므로 옛 서버에서 새 서버로 바로 보낸다(5.2GB 6분. 맥북을 거치면 집 회선을 두 번 탄다).
+1. 새 서버를 위 1번까지 설치하고, `.env`를 넣은 직후 실제 키로 API 시험(DB에 쓰지 않는다). 둘 다 0이 아니어야 옛 서버를 건드린다:
+   ```bash
+   .venv/bin/python -c "
+   import sys, datetime as dt; sys.path[:0]=['py','py/jobs']
+   import seoul_api, collect_wx
+   d = dt.date.today()-dt.timedelta(days=1)
+   r = seoul_api.seoul_get('tbCycleFailureReport', 1, 5, d.strftime('%Y%m%d'))
+   print('서울시 API:', r['code'], r['total'], '건')
+   w = collect_wx.fetch_asos_day(d)
+   print('기상청 ASOS:', 0 if w is None else len(w), '시간')"
+   ```
+2. 맥북에서 새 서버 키를 ssh-agent에 올리고 옛 서버에 `-A`로 들어간다(키 파일을 옛 서버에 두지 않는다): `ssh-add <새 서버 키>.pem`, `ssh -A -i <옛 서버 키>.pem ubuntu@<옛 IP>`. 옛 서버에서 `ssh ubuntu@<새 IP> hostname`이 되는지 먼저 본다.
+3. 옛 서버: 타이머 8개를 끈다(`systemctl stop`, 이름 하나씩) → 위 잠금 사본 스크립트 → `md5sum`.
+4. 옛 서버에서 `scp`로 새 서버에 보낸다: 사본(→ `data/db/ops.duckdb`), `station_master.csv`·`station_cluster.csv`, `kma_by_origin.parquet`, `serving/`. 새 서버에서 `md5sum`이 같은지 본다.
+5. 옛 서버 타이머가 0개인지 다시 보고 새 서버에서 아래 4번(켜고 확인). 주소는 DuckDNS에서 IP만 새 고정 IP로 바꾸고(`https://www.duckdns.org`, www 없는 주소는 응답하지 않았다) DNS가 바뀐 뒤 Caddy를 재시작해야 인증서가 바로 나온다.
+6. 새 서버가 며칠 정상으로 돈 뒤 옛 서버를 지운다: 인스턴스, **고정 IP(따로 지워야 과금이 멈춘다)**, 스냅샷, 깃허브 Deploy keys의 옛 키. 옛 서버에만 있는 것은 `logs/`뿐이었다(맥북 `data/archive/`에 받아 둠).
 
 **3. 서버에서: 주소** (DuckDNS 무료 서브도메인을 고정 IP에 연결. 지금 주소는 루트 `README.md`. 누구나 볼 수 있게 열어 둠)
 ```bash
